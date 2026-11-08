@@ -1,0 +1,312 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 정제 실험실 — 막 모은 데이터를 단계별로 정제해 본다 ([12소생03-02])
+ *
+ * 표의 문제 칸이 색으로 보이고, 단추를 누를 때마다 표와 「남은 문제」 숫자가 바뀐다.
+ * 누른 단계는 그대로 판다스 코드 한 줄이 되어 «내 정제 코드»에 쌓인다 —
+ * 아래 파이썬 예제와 견주어 보면 같은 일을 한 것을 알 수 있다.
+ *
+ * 일부러 넣은 갈림길: 「도」가 붙은 기온을 고치기 전에 빈칸을 지우면, 숫자로 못 읽는 칸까지
+ * 빈칸으로 보고 지운다(판다스 to_numeric(errors='coerce') + dropna 와 같다).
+ * 그러면 26줄이 아니라 24줄이 남는다 — «고칠 수 있는 것은 고치고, 못 고치는 것만 지운다».
+ *
+ * MDX 사용법
+ *   <CleanLab id="u3-l4-clean" />     (기본 파일 bike_raw.csv)
+ *
+ * 계산은 src/lib/datatools.js. 파일은 public/data/ 에서 빌드할 때 읽어 페이지에 넣는다
+ * (인터넷이 끊겨도 동작한다).
+ */
+import { readFileSync } from 'node:fs';
+
+interface Props {
+  id: string;
+  file?: string;
+  /** 지울 만한 열 — 분석 목적과 상관없는 것 */
+  extra?: string[];
+  /** 숫자여야 하는 열 */
+  numeric?: string[];
+  /** 이상한 값을 거르는 열과 처음 문턱값 */
+  outlier?: { col: string; max: number };
+}
+const {
+  id,
+  file = 'bike_raw.csv',
+  extra = ['기록한사람', '메모'],
+  numeric = ['평균기온', '강수량', '대여건수'],
+  outlier = { col: '대여건수', max: 10000 },
+} = Astro.props;
+const csv = readFileSync(`public/data/${file}`, 'utf8');
+const 설정 = JSON.stringify({ file, extra, numeric, outlier });
+---
+
+<section class="lab" data-cleanlab={id} data-config={설정}>
+  <script type="application/json" data-csv set:html={JSON.stringify(csv)} />
+  <header class="lab__head">
+    <span class="lab__badge">정제 실험실</span>
+    <span class="lab__title">{file} — 막 모은 상태</span>
+    <button type="button" class="lab__btn lab__btn--ghost" data-reset>처음으로</button>
+  </header>
+
+  <div class="lab__meters" data-meters aria-live="polite"></div>
+
+  <div class="lab__steps">
+    <div class="lab__step">
+      <p class="lab__step-title"><b>①</b> 필요 없는 열 빼기</p>
+      <p class="lab__step-why">분석 목적(날씨와 대여의 관계)에 쓰지 않는 열은 뺀다. 쓰지 않는 열이 많으면 헷갈리고, 사람 이름이 든 열은 개인 정보다.</p>
+      <div class="lab__checks" data-cols></div>
+      <button type="button" class="lab__btn" data-act="drop-cols">고른 열 빼기</button>
+    </div>
+    <div class="lab__step">
+      <p class="lab__step-title"><b>②</b> 중복 행 지우기</p>
+      <p class="lab__step-why">같은 날이 두 번 들어가면 그날이 두 번 세어진다.</p>
+      <button type="button" class="lab__btn" data-act="dedup">중복 지우기</button>
+    </div>
+    <div class="lab__step">
+      <p class="lab__step-title"><b>③</b> 단위가 섞인 값 고치기</p>
+      <p class="lab__step-why">「12.4도」는 사람 눈에는 숫자지만 컴퓨터에게는 글자다. 「도」를 떼면 숫자로 읽힌다.</p>
+      <button type="button" class="lab__btn" data-act="unit">「도」 떼기</button>
+    </div>
+    <div class="lab__step">
+      <p class="lab__step-title"><b>④</b> 빈칸(결측치) 처리</p>
+      <p class="lab__step-why">빈칸이 있는 날을 지울까, 그 열의 평균으로 채울까? 숫자로 못 읽는 칸도 여기서 빈칸으로 본다.</p>
+      <div class="lab__row">
+        <button type="button" class="lab__btn" data-act="dropna">빈칸 있는 줄 지우기</button>
+        <button type="button" class="lab__btn" data-act="fillna">평균으로 채우기</button>
+      </div>
+    </div>
+    <div class="lab__step">
+      <p class="lab__step-title"><b>⑤</b> 이상한 값(이상치) 거르기</p>
+      <p class="lab__step-why">하루 대여가 99999건? 기계 오류다. 말이 되는 범위를 정해 그 밖의 줄을 거른다.</p>
+      <div class="lab__row">
+        <label class="lab__inline"><span data-out-col></span> 가 <input type="number" class="lab__num" data-out-max step="100" /> 보다 작은 줄만 남기기</label>
+        <button type="button" class="lab__btn" data-act="outlier">거르기</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="lab__msg" data-msg aria-live="polite"></p>
+
+  <div class="lab__legend">
+    <span class="lab__lg lab__lg--blank">빈칸</span><span class="lab__lg lab__lg--text">숫자가 아님</span><span class="lab__lg lab__lg--out">이상한 값</span><span class="lab__lg lab__lg--dup">중복 행</span>
+  </div>
+  <div class="lab__table" data-table></div>
+
+  <details class="lab__code">
+    <summary>내 정제 과정을 판다스 코드로 보기</summary>
+    <pre data-code></pre>
+  </details>
+
+  <div class="lab__row lab__foot">
+    <button type="button" class="lab__btn lab__btn--ghost" data-download>⬇ 정제한 데이터 CSV 로 저장</button>
+    <span class="lab__hint">저장하는 것까지가 정제다 — 다음에 다시 모으지 않아도 된다.</span>
+  </div>
+</section>
+
+<script>
+  import { CSV읽기, CSV쓰기, 숫자로, 평균, 수 } from '@lib/datatools.js';
+
+  type 행 = Record<string, string>;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-cleanlab]')) {
+    const 설정 = JSON.parse(root.dataset.config!);
+    const 원본 = CSV읽기(JSON.parse(root.querySelector('[data-csv]')!.textContent!));
+    let 열: string[] = [];
+    let 행들: 행[] = [];
+    let 기록: { 말: string; 코드: string }[] = [];
+    let 갈림길 = ''; // 고칠 수 있는 칸을 지운 경우 알려 준다
+
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    $('[data-out-col]').textContent = 설정.outlier.col;
+
+    function 처음() {
+      열 = [...원본.열];
+      행들 = 원본.행.map((r) => ({ ...r }));
+      기록 = [{ 말: '파일 읽기', 코드: `df = pd.read_csv('${설정.file}')` }];
+      갈림길 = '';
+      $<HTMLInputElement>('[data-out-max]').value = String(설정.outlier.max);
+      말('');
+      그리기();
+    }
+
+    const 열쇠 = (r: 행) => 열.map((k) => r[k]).join('\u0001');
+    const 빈칸인가 = (v: string) => String(v ?? '').trim() === '';
+    const 숫자아님 = (k: string, v: string) => 설정.numeric.includes(k) && !빈칸인가(v) && Number.isNaN(숫자로(v));
+    const 이상한가 = (k: string, v: string) => k === 설정.outlier.col && Number(숫자로(v)) >= 설정.outlier.max;
+
+    function 문제세기() {
+      const 본 = new Set<string>();
+      let 중복 = 0, 빈칸 = 0, 글자 = 0, 이상 = 0;
+      const 중복줄 = new Set<number>();
+      행들.forEach((r, i) => {
+        const k = 열쇠(r);
+        if (본.has(k)) { 중복++; 중복줄.add(i); }
+        본.add(k);
+        for (const c of 열) {
+          if (빈칸인가(r[c])) 빈칸++;
+          else if (숫자아님(c, r[c])) 글자++;
+          else if (이상한가(c, r[c])) 이상++;
+        }
+      });
+      const 남은열 = 설정.extra.filter((c: string) => 열.includes(c)).length;
+      return { 중복, 빈칸, 글자, 이상, 남은열, 중복줄 };
+    }
+
+    /** 숫자 열을 아직 숫자로 바꾸지 않았으면 판다스 코드에 to_numeric 줄을 넣는다 (한 열에 한 번만) */
+    function 숫자로바꾸기기록() {
+      for (const c of 설정.numeric) {
+        if (!열.includes(c)) continue;
+        if (기록.some((x) => x.코드.includes(`pd.to_numeric(df['${c}']`))) continue;
+        if (!행들.some((r) => 숫자아님(c, r[c])) && !기록.some((x) => x.말 === '단위 떼기' && x.코드.includes(`'${c}'`))) continue;
+        기록.push({ 말: '숫자로 바꾸기 (못 바꾸면 빈칸)', 코드: `df['${c}'] = pd.to_numeric(df['${c}'], errors='coerce')` });
+      }
+    }
+
+    function 말(t: string, 좋음 = false) {
+      const el = $('[data-msg]');
+      el.textContent = t;
+      el.classList.toggle('is-ok', 좋음);
+    }
+
+    function 그리기() {
+      const s = 문제세기();
+      const 칸 = (이름: string, 값: number | string, 문제 = false) =>
+        `<span class="mt${문제 ? ' mt--bad' : ' mt--ok'}"><b>${값}</b>${이름}</span>`;
+      $('[data-meters]').innerHTML =
+        `<span class="mt"><b>${행들.length}</b>줄</span><span class="mt"><b>${열.length}</b>열</span>` +
+        칸('필요 없는 열', s.남은열, s.남은열 > 0) + 칸('중복 행', s.중복, s.중복 > 0) +
+        칸('빈칸', s.빈칸, s.빈칸 > 0) + 칸('숫자가 아닌 값', s.글자, s.글자 > 0) + 칸('이상한 값', s.이상, s.이상 > 0);
+
+      $('[data-cols]').innerHTML = 열
+        .map((c) => `<label class="ck"><input type="checkbox" value="${c}"> ${c}</label>`)
+        .join('');
+
+      const 머리 = `<tr><th>#</th>${열.map((c) => `<th>${c}</th>`).join('')}</tr>`;
+      const 몸 = 행들
+        .map((r, i) => {
+          const 칸들 = 열
+            .map((c) => {
+              const v = r[c];
+              const cls = 빈칸인가(v) ? 'c-blank' : 숫자아님(c, v) ? 'c-text' : 이상한가(c, v) ? 'c-out' : '';
+              return `<td class="${cls}">${빈칸인가(v) ? '' : String(v).replace(/</g, '&lt;')}</td>`;
+            })
+            .join('');
+          return `<tr class="${s.중복줄.has(i) ? 'r-dup' : ''}"><td class="c-no">${i + 1}</td>${칸들}</tr>`;
+        })
+        .join('');
+      $('[data-table]').innerHTML = `<table>${머리}${몸}</table>`;
+      $('[data-code]').textContent = 'import pandas as pd\n' + 기록.map((x) => `${x.코드}    # ${x.말}`).join('\n') + `\nprint(len(df))   # → ${행들.length}`;
+
+      const 끝 = !s.중복 && !s.빈칸 && !s.글자 && !s.이상 && !s.남은열;
+      if (끝) {
+        const 채움 = 기록.some((x) => x.말.includes('채우기'));
+        말(
+          `정제 완료 — ${행들.length}줄 · ${열.length}열.` +
+            (갈림길 ? ` ${갈림길}` : '') +
+            (채움 ? ' 평균으로 채운 날은 «진짜로 잰 값»이 아니다. 보고서에 어떤 날을 채웠는지 밝혀 두자.' : ''),
+          !갈림길
+        );
+      }
+    }
+
+    root.addEventListener('click', (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-reset],[data-download]');
+      if (!t) return;
+      if (t.hasAttribute('data-reset')) return 처음();
+      if (t.hasAttribute('data-download')) {
+        const 글 = CSV쓰기(열, 행들);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['\uFEFF' + 글], { type: 'text/csv;charset=utf-8' }));
+        a.download = 설정.file.replace('_raw', '_clean').replace(/(\.csv)?$/, (m) => (m ? m : '.csv'));
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        return;
+      }
+      const 전 = 행들.length;
+      switch (t.dataset.act) {
+        case 'drop-cols': {
+          const 고른 = [...root.querySelectorAll<HTMLInputElement>('[data-cols] input:checked')].map((x) => x.value);
+          if (!고른.length) return 말('뺄 열을 먼저 골라 보자.');
+          const 필요한데 = 고른.filter((c) => !설정.extra.includes(c));
+          if (필요한데.length) return 말(`「${필요한데.join('」·「')}」 열은 분석에 쓴다. 빼면 날씨와 대여를 견줄 수 없다.`);
+          열 = 열.filter((c) => !고른.includes(c));
+          for (const r of 행들) for (const c of 고른) delete r[c];
+          기록.push({ 말: '열 빼기', 코드: `df = df.drop(columns=[${고른.map((c) => `'${c}'`).join(', ')}])` });
+          break;
+        }
+        case 'dedup': {
+          const 본 = new Set<string>();
+          행들 = 행들.filter((r) => (본.has(열쇠(r)) ? false : (본.add(열쇠(r)), true)));
+          기록.push({ 말: '중복 지우기', 코드: 'df = df.drop_duplicates()' });
+          break;
+        }
+        case 'unit': {
+          let n = 0;
+          for (const r of 행들) {
+            for (const c of 설정.numeric) {
+              if (r[c] !== undefined && /도$/.test(String(r[c]).trim())) {
+                r[c] = String(r[c]).trim().replace(/도$/, '');
+                n++;
+              }
+            }
+          }
+          if (!n) return 말('「도」가 붙은 칸이 없다.');
+          기록.push({ 말: '단위 떼기', 코드: "df['평균기온'] = df['평균기온'].astype(str).str.replace('도', '')" });
+          숫자로바꾸기기록();
+          break;
+        }
+        case 'dropna': {
+          /* 판다스와 같게 — 숫자 열의 «숫자로 못 읽는 칸»은 to_numeric(errors='coerce') 로 빈칸이 된 뒤 지워진다 */
+          숫자로바꾸기기록();
+          const 글자칸 = 행들.filter((r) => 열.some((c) => 숫자아님(c, r[c]) && /\d/.test(r[c]))).length;
+          /* 쓰지 않는 열(메모)의 빈칸 «때문에만» 지워지는 날 */
+          const 메모때문 = 행들.filter(
+            (r) =>
+              설정.extra.some((c: string) => 열.includes(c) && 빈칸인가(r[c])) &&
+              !열.some((c) => !설정.extra.includes(c) && (빈칸인가(r[c]) || 숫자아님(c, r[c])))
+          ).length;
+          행들 = 행들.filter((r) => !열.some((c) => 빈칸인가(r[c]) || 숫자아님(c, r[c])));
+          기록.push({ 말: '빈칸 있는 줄 지우기', 코드: 'df = df.dropna()' });
+          if (메모때문) {
+            갈림길 = `쓰지 않는 열(${설정.extra.filter((c: string) => 열.includes(c)).join('·')})의 빈칸 때문에 멀쩡한 날 ${메모때문}개까지 지워졌다. [처음으로] 를 눌러 ① 필요 없는 열부터 빼 보자.`;
+          } else if (글자칸) {
+            갈림길 = `「도」만 떼면 살릴 수 있었던 날 ${글자칸}개까지 지워졌다. [처음으로] 를 눌러 ③을 먼저 해 보자.`;
+          }
+          if (갈림길) {
+            그리기();
+            return 말(`${전 - 행들.length}줄이 빠졌다. 그런데 ${갈림길}`);
+          }
+          break;
+        }
+        case 'fillna': {
+          숫자로바꾸기기록();
+          const 채운열: string[] = [];
+          for (const c of 설정.numeric.filter((k: string) => 열.includes(k))) {
+            const 정상 = 행들.map((r) => 숫자로(r[c])).filter((x) => Number.isFinite(x) && !이상한가(c, String(x))) as number[];
+            const m = 평균(정상);
+            let n = 0;
+            for (const r of 행들) if (빈칸인가(r[c]) || 숫자아님(c, r[c])) { r[c] = String(Math.round(m * 10) / 10); n++; }
+            if (n) 채운열.push(c);
+          }
+          if (!채운열.length) return 말('채울 빈칸이 없다.');
+          for (const c of 채운열) 기록.push({ 말: `${c} 평균으로 채우기`, 코드: `df['${c}'] = df['${c}'].fillna(df['${c}'].mean())` });
+          break;
+        }
+        case 'outlier': {
+          const max = Number($<HTMLInputElement>('[data-out-max]').value);
+          if (!Number.isFinite(max)) return 말('문턱값을 숫자로 적어 보자.');
+          설정.outlier.max = max;
+          const c = 설정.outlier.col;
+          행들 = 행들.filter((r) => !(Number(숫자로(r[c])) >= max));
+          if (전 - 행들.length > 2) 갈림길 = `${수(max, 0)} 은 너무 낮은 기준이다 — 정상인 날 ${전 - 행들.length}개가 함께 지워졌다. 하루 대여는 보통 수천 건이다.`;
+          기록.push({ 말: '이상한 값 거르기', 코드: `df = df[df['${c}'] < ${max}]` });
+          break;
+        }
+      }
+      말(전 !== 행들.length ? `${전 - 행들.length}줄이 빠졌다.` : '');
+      그리기();
+    });
+
+    처음();
+  }
+</script>

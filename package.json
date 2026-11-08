@@ -1,0 +1,35 @@
+{
+  "name": "sw-life-webtextbook",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "author": "티쳐무 (trmoo)",
+  "private": true,
+  "description": "2022 개정 교육과정 고등학교 융합 선택 「소프트웨어와 생활」 웹 교과서",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "npm run test && astro build && npm run check:html",
+    "preview": "astro preview",
+    "astro": "astro",
+    "test": "npm run check:data && npm run check:content && npm run check:toc && npm run check:examples && npm run check:boardsim && npm run check:datatools && npm run check:runner && npm run check:simlab && npm run check:projtools",
+    "check:data": "node tools/validate-curriculum.mjs content/curriculum.json",
+    "check:content": "node tools/check-content.mjs",
+    "check:toc": "node tools/test-toc.mjs",
+    "check:examples": "node tools/check-examples.mjs",
+    "check:html": "node tools/check-html.mjs",
+    "check:boardsim": "node tools/check-boardsim.mjs",
+    "check:datatools": "node tools/check-datatools.mjs",
+    "check:runner": "node tools/check-runner.mjs",
+    "check:simlab": "node tools/check-simlab.mjs",
+    "check:projtools": "node tools/check-projtools.mjs",
+    "data": "python tools/make-data.py"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^7.0.5",
+    "astro": "^7.1.6"
+  }
+}

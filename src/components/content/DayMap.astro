@@ -1,0 +1,285 @@
+---
+/**
+ * © 2026 티쳐무 · 모든 권리 보유
+ * 하루 소프트웨어 지도 — 하루의 장면마다 숨어 있는 소프트웨어를 찾는다
+ *
+ * 장면 속 단추(소프트웨어)를 누르면 ① 어떤 종류인지 ② 그것이 멈추면 무슨 일이 생기는지가 열린다.
+ * 찾은 개수를 종류별로 세어 「눈에 안 보이는 소프트웨어(임베디드)가 가장 많다」를
+ * 학생이 스스로 발견하게 하는 것이 목적이다.
+ *
+ * MDX 사용법
+ *   <DayMap kinds={['시스템', '응용', '임베디드']} scenes={[
+ *     { 시각: '07:00', 장면: '알람이 울린다', sw: [{ 이름: '알람 앱', 종류: '응용', 멈추면: '…' }] },
+ *   ]} />
+ */
+interface SW {
+  이름: string;
+  종류: string;
+  멈추면: string;
+}
+interface Scene {
+  시각: string;
+  장면: string;
+  아이콘?: string;
+  sw: SW[];
+}
+interface Props {
+  scenes: Scene[];
+  kinds: string[];
+  title?: string;
+}
+const { scenes, kinds, title = '내 하루 속의 소프트웨어 찾기' } = Astro.props;
+let 총 = 0;
+for (const s of scenes)
+  for (const w of s.sw) {
+    총++;
+    if (!kinds.includes(w.종류)) throw new Error(`DayMap: "${w.이름}" 의 종류 "${w.종류}" 가 kinds 에 없다`);
+  }
+---
+
+<div class="day" data-daymap data-total={총}>
+  <div class="day__head">
+    <span class="day__label">찾아보기</span>
+    <span class="day__title">{title}</span>
+  </div>
+  <p class="day__how">
+    장면마다 숨은 소프트웨어 단추가 있다. 누르면 그것이 어떤 종류인지, 멈추면 무슨 일이 생기는지 열린다.
+  </p>
+
+  <ol class="day__line">
+    {
+      scenes.map((s) => (
+        <li class="day__scene">
+          <span class="day__time">{s.시각}</span>
+          <div class="day__card">
+            <p class="day__what">
+              {s.아이콘 && <span aria-hidden="true">{s.아이콘} </span>}
+              {s.장면}
+            </p>
+            <div class="day__sws">
+              {s.sw.map((w) => (
+                <button type="button" class="day__sw" data-sw data-kind={w.종류} aria-expanded="false">
+                  <span class="day__q">?</span> {w.이름}
+                </button>
+              ))}
+            </div>
+            {s.sw.map((w) => (
+              <div class="day__open" hidden data-open>
+                <strong>{w.이름}</strong>
+                <span class="day__kind" data-k={kinds.indexOf(w.종류)}>{w.종류} 소프트웨어</span>
+                <p>멈추면 — {w.멈추면}</p>
+              </div>
+            ))}
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+
+  <div class="day__tally" aria-live="polite">
+    <p class="day__count"><strong data-found>0</strong> / {총} 개 찾음</p>
+    <div class="day__bars">
+      {
+        kinds.map((k, i) => (
+          <div class="day__bar">
+            <span class="day__bar-name">{k}</span>
+            <span class="day__bar-track">
+              <span class="day__bar-fill" data-k={i} data-bar={k} style="width:0%" />
+            </span>
+            <span class="day__bar-n" data-n={k}>0</span>
+          </div>
+        ))
+      }
+    </div>
+    <p class="day__done" data-done hidden>
+      다 찾았다! 가장 긴 막대는 무엇인가? 그 소프트웨어들은 대부분 <strong>화면이 없어서</strong>
+      우리가 쓰고 있다는 것조차 모른다.
+    </p>
+  </div>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-daymap]')) {
+    const 총 = Number(root.dataset.total);
+    const 찾음 = new Set<HTMLElement>();
+    const 갱신 = () => {
+      root.querySelector('[data-found]')!.textContent = String(찾음.size);
+      const 셈: Record<string, number> = {};
+      for (const b of 찾음) 셈[b.dataset.kind!] = (셈[b.dataset.kind!] ?? 0) + 1;
+      const 최대 = Math.max(1, ...Object.values(셈));
+      for (const bar of root.querySelectorAll<HTMLElement>('[data-bar]')) {
+        const n = 셈[bar.dataset.bar!] ?? 0;
+        bar.style.width = `${(n / 최대) * 100}%`;
+        root.querySelector(`[data-n="${bar.dataset.bar}"]`)!.textContent = String(n);
+      }
+      (root.querySelector('[data-done]') as HTMLElement).hidden = 찾음.size < 총;
+    };
+    for (const card of root.querySelectorAll<HTMLElement>('.day__card')) {
+      const 단추 = [...card.querySelectorAll<HTMLElement>('[data-sw]')];
+      const 열림 = [...card.querySelectorAll<HTMLElement>('[data-open]')];
+      단추.forEach((b, i) => {
+        b.addEventListener('click', () => {
+          const 열기 = 열림[i].hidden;
+          열림.forEach((o) => (o.hidden = true));
+          단추.forEach((x) => x.setAttribute('aria-expanded', 'false'));
+          열림[i].hidden = !열기;
+          b.setAttribute('aria-expanded', String(열기));
+          b.classList.add('is-found');
+          b.querySelector('.day__q')!.textContent = '✓';
+          찾음.add(b);
+          갱신();
+        });
+      });
+    }
+  }
+</script>
+
+<style>
+  .day {
+    margin: var(--space-6) 0;
+    padding: var(--space-4) var(--space-5);
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: var(--radius);
+    background: var(--c-surface);
+  }
+  .day__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+  }
+  .day__label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--c-accent);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+  }
+  .day__title {
+    font-weight: 800;
+    font-size: 1.05rem;
+  }
+  .day__how {
+    color: var(--c-text-soft);
+    font-size: 0.92rem;
+  }
+  .day__line {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 4px;
+    border-left: 3px solid var(--c-primary-soft);
+  }
+  .day__scene {
+    display: grid;
+    grid-template-columns: 62px 1fr;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+    position: relative;
+  }
+  .day__time {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--c-primary);
+    padding-top: 10px;
+  }
+  .day__card {
+    background: var(--c-surface-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-4);
+  }
+  .day__what {
+    margin: 0 0 var(--space-2);
+    font-weight: 600;
+  }
+  .day__sws {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .day__sw {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 7px 14px;
+    border-radius: var(--radius-pill);
+    border: 1.5px dashed var(--c-border-strong);
+    background: var(--c-surface);
+    cursor: pointer;
+  }
+  .day__sw.is-found {
+    border-style: solid;
+    border-color: var(--c-primary);
+    background: var(--c-primary-soft);
+  }
+  .day__sw[aria-expanded='true'] {
+    box-shadow: 0 0 0 3px var(--c-primary-soft);
+  }
+  .day__q {
+    font-weight: 800;
+    color: var(--c-primary);
+  }
+  .day__open {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-left: 4px solid var(--c-primary);
+    background: var(--c-surface);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .day__open p {
+    margin: 4px 0 0;
+  }
+  .day__kind {
+    margin-left: var(--space-2);
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: var(--radius-pill);
+  }
+  [data-k='0'] { background: #e8eefc; color: #1e429f; }
+  [data-k='1'] { background: #fbece6; color: #8f3418; }
+  [data-k='2'] { background: #e7f6ec; color: #15803d; }
+  .day__bar-fill[data-k='0'] { background: #2b59c3; }
+  .day__bar-fill[data-k='1'] { background: #b4492b; }
+  .day__bar-fill[data-k='2'] { background: #15803d; }
+  .day__tally {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--c-border);
+  }
+  .day__count {
+    margin: 0 0 var(--space-2);
+  }
+  .day__bar {
+    display: grid;
+    grid-template-columns: 90px 1fr 32px;
+    gap: var(--space-3);
+    align-items: center;
+    margin: 6px 0;
+  }
+  .day__bar-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+  .day__bar-track {
+    height: 14px;
+    background: var(--c-surface-2);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+  }
+  .day__bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    transition: width 0.35s ease;
+  }
+  .day__bar-n {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    text-align: right;
+  }
+  .day__done {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-3);
+    background: var(--ok-soft);
+    border-radius: var(--radius-sm);
+  }
+</style>

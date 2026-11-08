@@ -1,0 +1,127 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 급식 줄 시뮬레이터 — 현상을 모델로 옮기기 (Ⅳ-5)
+ *
+ * 「점심시간 급식 줄이 너무 길다」를 변수(학생 수·배식대·배식 시간·나눠 오기)와
+ * 규칙(10초마다 도착·배식)으로 옮긴 모델이다. 실험할 때마다 결과가 **실험 기록표**에 한 줄씩 쌓이고,
+ * 바로 앞 실험의 줄 길이가 점선으로 남아 «무엇을 바꿨더니 어떻게 달라졌나»를 견줄 수 있다.
+ * 배식대를 하나 더 놓는 것(돈·사람이 든다)과 학년별로 5분씩 나눠 오는 것(돈이 안 든다)을 비교하는 것이 핵심 실험이다.
+ *
+ * 계산은 src/lib/simlab.js 의 급식줄( ).
+ *
+ * MDX 사용법
+ *   <QueueSim id="u4-l5-queue" />
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<section class="lab sim" data-queuesim={id}>
+  <header class="lab__head">
+    <span class="lab__badge">시뮬레이터</span>
+    <span class="lab__title">점심시간 급식 줄 (지어낸 학교)</span>
+  </header>
+
+  <div class="sim__grid">
+    <div class="sim__box">
+      <p class="sim__tag sim__tag--var">변수 · 입력</p>
+      <label class="sim__slider">학생 수 <b data-out="학생"></b>명
+        <input type="range" min="60" max="240" step="10" value="120" data-var="학생" /></label>
+      <label class="sim__slider">배식대 <b data-out="배식대"></b>곳
+        <input type="range" min="1" max="3" step="1" value="1" data-var="배식대" /></label>
+      <label class="sim__slider">한 명 배식에 걸리는 시간(평균) <b data-out="배식초"></b>초
+        <input type="range" min="10" max="40" step="5" value="20" data-var="배식초" /></label>
+      <label class="lab__switch"><input type="checkbox" data-var="나눠서" /> 학년별로 5분씩 나눠서 온다</label>
+    </div>
+    <div class="sim__box">
+      <p class="sim__tag sim__tag--rule">규칙 (10초가 한 걸음)</p>
+      <ol class="sim__rules">
+        <li>학생은 종이 친 뒤 2분 안에 아무 때나 도착한다. 나눠 오면 1학년은 0분, 2학년은 5분, 3학년은 10분부터.</li>
+        <li>배식대가 비면 줄 맨 앞 학생이 받는다.</li>
+        <li>한 명 배식에는 평균 시간의 0.5~1.5배가 걸린다(사람마다 다르다).</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="lab__row sim__run">
+    <button type="button" class="lab__btn" data-act="run">▶ 실험하기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="clear">기록 지우기</button>
+  </div>
+
+  <div class="sim__stats sim__stats--4" data-stats></div>
+  <div class="lab__chart" data-chart><p class="lab__empty">▶ 실험하기를 누르면 줄 길이의 변화가 그려진다.</p></div>
+  <div class="sim__logwrap">
+    <table class="sim__log" data-log hidden>
+      <thead><tr><th>#</th><th>학생</th><th>배식대</th><th>배식 시간</th><th>나눠 오기</th><th>평균 대기</th><th>가장 오래</th><th>다 받기까지</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  import { 난수, 급식줄 } from '@lib/simlab.js';
+  import { 여러선 } from '@lib/datatools.js';
+
+  const 분 = (초: number) => `${(초 / 60).toFixed(1)}분`;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-queuesim]')) {
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    let 지난: { 기록: { 초: number; 줄: number }[] } | null = null;
+    let 번호 = 0;
+
+    const 변수 = () => ({
+      학생: Number($<HTMLInputElement>('[data-var="학생"]').value),
+      배식대: Number($<HTMLInputElement>('[data-var="배식대"]').value),
+      배식초: Number($<HTMLInputElement>('[data-var="배식초"]').value),
+      나눠서: $<HTMLInputElement>('[data-var="나눠서"]').checked,
+    });
+    function 숫자표시() {
+      const v = 변수();
+      for (const k of ['학생', '배식대', '배식초'] as const) $(`[data-out="${k}"]`).textContent = String(v[k]);
+    }
+
+    function 실험() {
+      const v = 변수();
+      const r = 급식줄(v, 난수(Math.floor(Math.random() * 1e9)));
+      $('[data-stats]').innerHTML =
+        `<div class="lab__stat"><span>평균 대기</span><b>${분(r.평균대기)}</b></div>` +
+        `<div class="lab__stat"><span>가장 오래 기다린 학생</span><b>${분(r.최대대기)}</b></div>` +
+        `<div class="lab__stat"><span>모두 받기 시작할 때까지</span><b>${분(r.끝)}</b></div>` +
+        `<div class="lab__stat"><span>가장 길었던 줄</span><b>${Math.max(...r.기록.map((x) => x.줄))}명</b></div>`;
+      /* 가로축은 분 단위. 이번과 지난 실험의 길이가 달라 긴 쪽에 맞춘다 */
+      const 길이 = Math.max(r.기록.length, 지난?.기록.length ?? 0);
+      const 펴기 = (기록: { 줄: number }[]) => Array.from({ length: 길이 }, (_, i) => (i < 기록.length ? 기록[i].줄 : 0));
+      const 계열 = [{ 이름: '이번 실험', 값들: 펴기(r.기록), 색: '#b4492b' }];
+      if (지난) 계열.push({ 이름: '바로 앞 실험', 값들: 펴기(지난.기록), 색: '#64748b', 점선: true } as never);
+      $('[data-chart]').innerHTML = 여러선(계열, {
+        x값들: Array.from({ length: 길이 }, (_, i) => `${Math.round((i * 10) / 60)}분`),
+        x이름: '종 친 뒤', y이름: '줄 선 학생(명)', 눈금수: 8,
+      });
+      지난 = r;
+      const tb = $('[data-log] tbody');
+      $('[data-log]').hidden = false;
+      tb.insertAdjacentHTML(
+        'afterbegin',
+        `<tr><td>${++번호}</td><td>${v.학생}</td><td>${v.배식대}</td><td>${v.배식초}초</td><td>${v.나눠서 ? '예' : '아니요'}</td>` +
+          `<td><b>${분(r.평균대기)}</b></td><td>${분(r.최대대기)}</td><td>${분(r.끝)}</td></tr>`
+      );
+    }
+
+    root.addEventListener('input', 숫자표시);
+    root.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'run') 실험();
+      if (b.dataset.act === 'clear') {
+        $('[data-log] tbody').innerHTML = '';
+        $('[data-log]').hidden = true;
+        번호 = 0;
+        지난 = null;
+      }
+    });
+    숫자표시();
+  }
+</script>

@@ -1,0 +1,164 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 페르소나 만들기 (Ⅴ-3) — 인터뷰·관찰로 모은 요구를 «대표 사용자 한 사람»으로 그린다
+ *
+ * 왼쪽에 적으면 오른쪽 카드가 바로 그려진다. 점검표는 특히 두 가지를 본다 —
+ *   ① 불편이 «장면» 속에 있는가(언제·어디서·무엇을 하다가)
+ *   ② 불편 칸에 해결책(앱·기능…)을 섞지 않았는가 — 요구와 해결책을 가르는 것이 이 차시의 핵심이다.
+ * 이름은 지어낸 것만 쓴다(🎲 단추). 적은 내용은 이 브라우저에만 저장된다(swlife-persona:<id>).
+ * 4차시 린 캔버스가 이 저장을 읽어 「페르소나에서 가져오기」를 할 수 있다.
+ *
+ * MDX 사용법
+ *   <PersonaMaker id="u5-l3-persona" />
+ */
+import { 페르소나모습 } from '@lib/projtools.js';
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+const 칸 = [
+  { k: '소개', 이름: '한 줄 소개', 도움: '나이·학년·하는 일', 줄: 0 },
+  { k: '장면', 이름: '하루 속 장면', 도움: '이 사람이 문제를 겪는 때와 곳', 줄: 2 },
+  { k: '목표', 이름: '하고 싶은 것 (목표)', 도움: '이 사람이 정말로 바라는 것', 줄: 2 },
+  { k: '불편', 이름: '불편한 점', 도움: '한 줄에 하나씩 — 해결책이 아니라 «겪는 일»을 적는다', 줄: 4 },
+  { k: '대안', 이름: '지금은 어떻게 버티나 (현재 대안)', 도움: '불편해도 지금 쓰고 있는 방법', 줄: 2 },
+  { k: '한마디', 이름: '이 사람의 한마디', 도움: '인터뷰에서 들은 말처럼', 줄: 0 },
+  { k: '근거', 이름: '근거', 도움: '몇 명에게 묻고 몇 번 관찰했나', 줄: 0 },
+];
+---
+
+<section class="lab pj" data-persona={id}>
+  <header class="lab__head">
+    <span class="lab__badge">페르소나</span>
+    <span class="lab__title">우리 서비스의 대표 사용자 한 사람</span>
+  </header>
+  <p class="pj__how">
+    인터뷰와 관찰에서 들은 이야기를 모아 <strong>지어낸 한 사람</strong>으로 그린다. 실제 친구의 이름이나 사진은 쓰지 않는다.
+  </p>
+
+  <div class="pj__two">
+    <div>
+      <label class="pj__field"><span>이름 (지어낸 이름)</span>
+        <span class="pj__inline"><input type="text" data-k="이름" maxlength="20" />
+          <button type="button" class="lab__btn lab__btn--ghost" data-act="name" title="지어낸 이름 하나 고르기">🎲</button></span>
+      </label>
+      <div class="pj__field"><span>모습</span>
+        <div class="pj__chips" data-faces>
+          {페르소나모습.map((f) => <button type="button" class="pj__chip pj__emoji" data-face={f} aria-pressed="false">{f}</button>)}
+        </div>
+      </div>
+      {
+        칸.map((c) => (
+          <label class="pj__field">
+            <span>{c.이름}</span>
+            <small>{c.도움}</small>
+            {c.줄 ? <textarea rows={c.줄} data-k={c.k} /> : <input type="text" data-k={c.k} />}
+          </label>
+        ))
+      }
+    </div>
+    <div>
+      <div class="pj-card" data-card></div>
+      <div class="pj__checks" data-checks></div>
+    </div>
+  </div>
+
+  <div class="pj__actions">
+    <button type="button" class="lab__btn" data-act="download">⬇ 내려받기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="print">🖨 인쇄</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="example">예시 넣어 보기</button>
+    <button type="button" class="lab__btn lab__btn--ghost pj__quiet" data-act="clear">지우기</button>
+  </div>
+  <p class="pj__note" data-saved>적은 내용은 이 브라우저에만 저장된다. 제출하려면 내려받는다.</p>
+</section>
+
+<script>
+  import { 페르소나점검, 지어낸이름들, 줄들, 이스케이프, 읽기, 쓰기, 기록HTML, 점검목록HTML } from '@lib/projtools.js';
+  import { 두번확인, 내려받기, 점검그리기 } from '@lib/pjui';
+
+  /* 본문 예시 — 지어낸 인물 「서윤」(분실물 이야기). 칸이 비어 있을 때만 채운다 */
+  const 예시: Record<string, string> = {
+    이름: '서윤',
+    모습: '🧑‍🎓',
+    소개: '고등학교 1학년 · 체육 수업이 일주일에 세 번',
+    장면: '체육 수업이 끝나고 교실로 돌아오면 물건이 하나씩 없다.',
+    목표: '잃어버린 물건을 빨리 되찾고 싶다. 부모님께 또 사 달라고 하고 싶지 않다.',
+    불편: '체육관에서 옷을 갈아입고 오면 어디에 두고 왔는지 기억이 안 난다\n분실물 보관함에 가려면 쉬는 시간 10분 안에 1층 끝까지 가야 한다\n보관함에서 물건을 찾을 때 너무 많아 뒤지는 데 오래 걸린다',
+    대안: '반 단체 대화방에 사진을 올려 본 사람이 있는지 묻는다.',
+    한마디: '또 체육복 샀다고 하면 엄마가 한숨 쉬실 거예요.',
+    근거: '우리 반 6명 인터뷰, 분실물 보관함 앞 관찰 2번',
+  };
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-persona]')) {
+    const 열쇠 = 'swlife-persona:' + root.dataset.persona;
+    const 입력들 = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-k]')];
+    const 얼굴들 = [...root.querySelectorAll<HTMLButtonElement>('[data-face]')];
+    let 모습 = '';
+
+    const 모으기 = () => {
+      const p: Record<string, string> = { 모습 };
+      for (const el of 입력들) p[el.dataset.k!] = el.value;
+      return p;
+    };
+    const 놓기 = (p: Record<string, string>) => {
+      for (const el of 입력들) el.value = p[el.dataset.k!] ?? '';
+      모습 = p.모습 ?? '';
+    };
+
+    function 카드(p: Record<string, string>) {
+      const 빈 = (글: string, 대신: string) => (글?.trim() ? 이스케이프(글) : `<span class="pj-empty">${대신}</span>`);
+      const 불편 = 줄들(p.불편);
+      return `<div class="pj-card__top"><span class="pj-card__face">${p.모습 || '🙂'}</span><div>
+        <h4 class="pj-card__name">${빈(p.이름, '이름')}</h4><p class="pj-card__intro">${빈(p.소개, '한 줄 소개')}</p></div></div>
+        ${p.한마디?.trim() ? `<p class="pj-card__quote">“${이스케이프(p.한마디)}”</p>` : ''}
+        <h5>장면</h5><p>${빈(p.장면, '언제, 어디서?')}</p>
+        <h5>목표</h5><p>${빈(p.목표, '무엇을 바라나?')}</p>
+        <h5>불편한 점</h5>${불편.length ? `<ul>${불편.map((x) => `<li>${이스케이프(x)}</li>`).join('')}</ul>` : '<p class="pj-empty">한 줄에 하나씩</p>'}
+        <h5>지금은 이렇게 버틴다</h5><p>${빈(p.대안, '현재 대안')}</p>
+        <h5>근거</h5><p>${빈(p.근거, '몇 명에게 들었나')}</p>`;
+    }
+
+    function 그리기(저장 = true) {
+      const p = 모으기();
+      for (const b of 얼굴들) b.setAttribute('aria-pressed', String(b.dataset.face === 모습));
+      root.querySelector<HTMLElement>('[data-card]')!.innerHTML = 카드(p);
+      점검그리기(root.querySelector<HTMLElement>('[data-checks]')!, 페르소나점검(p));
+      if (저장) {
+        root.querySelector<HTMLElement>('[data-saved]')!.textContent = 쓰기(열쇠, p)
+          ? '저장됨 ✓ — 이 브라우저에만 남는다. 제출하려면 내려받는다.'
+          : '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자.';
+      }
+    }
+
+    놓기(읽기(열쇠) ?? {});
+    그리기(false);
+
+    root.addEventListener('input', () => 그리기());
+    for (const b of 얼굴들) b.addEventListener('click', () => { 모습 = b.dataset.face!; 그리기(); });
+    root.querySelector('[data-act="name"]')!.addEventListener('click', () => {
+      const 이름칸 = 입력들.find((el) => el.dataset.k === '이름')!;
+      const 후보 = 지어낸이름들.filter((x) => x !== 이름칸.value);
+      이름칸.value = 후보[Math.floor(Math.random() * 후보.length)];
+      그리기();
+    });
+    root.querySelector('[data-act="example"]')!.addEventListener('click', () => {
+      const p = 모으기();
+      for (const [k, v] of Object.entries(예시)) if (!p[k]?.trim()) p[k] = v;
+      놓기(p);
+      그리기();
+    });
+    root.querySelector('[data-act="print"]')!.addEventListener('click', () => window.print());
+    두번확인(root.querySelector<HTMLButtonElement>('[data-act="clear"]')!, () => { 놓기({}); 그리기(); });
+    root.querySelector('[data-act="download"]')!.addEventListener('click', () => {
+      const p = 모으기();
+      내려받기(
+        `페르소나 ${p.이름 || ''}`.trim(),
+        기록HTML('페르소나 — 우리 서비스의 대표 사용자', `<div class="card">${카드(p)}</div>${점검목록HTML(페르소나점검(p))}`,
+          `.card{border:1px solid #e2e8f0;border-radius:14px;padding:18px;max-width:520px}.pj-card__top{display:flex;gap:12px;align-items:center}
+.pj-card__face{font-size:3rem}.pj-card__name{margin:0}.pj-card__intro{margin:0;color:#4d5b73}.pj-card__quote{border-left:4px solid #b4492b;padding:6px 12px;font-style:italic}
+h5{margin:14px 0 4px;color:#8f3418}.pj-empty{color:#94a3b8}`),
+      );
+    });
+  }
+</script>

@@ -1,0 +1,461 @@
+---
+/**
+ * © 2026 티쳐무 · 모든 권리 보유
+ * 활동지 — 학생이 직접 적는 칸 + 스스로 점검 + 파일로 내려받기
+ *
+ * 이 과목은 「물리적인 구현이 이루어지지 않더라도 아이디어 발산, 설계 계획 수립 등
+ * 학습 과정에 대한 평가가 이루어지도록」(고시문 고려 사항) 기록이 중요하다.
+ * 그래서 적은 내용을 ① 이 브라우저에 자동 저장하고 ② HTML 파일로 내려받아 제출하게 한다.
+ * 이름·학번 칸은 두지 않는다 — 내려받은 파일 이름을 학생이 스스로 바꾸게 한다.
+ *
+ * MDX 사용법
+ *   <Worksheet id="u1-l4-future" title="미래 예측 카드"
+ *     fields={[
+ *       { key: 'tech', label: '어떤 기술인가', type: 'select', options: ['생성형 인공지능', '자율 주행'] },
+ *       { key: 'now', label: '지금 일어나고 있는 일 (근거)', rows: 3, hint: '기사·통계·보고서에서' },
+ *       { key: 'who', label: '누가 영향을 받나', type: 'check', options: ['학생', '노인'] },
+ *     ]}
+ *     checks={[
+ *       { label: '근거에 연도나 숫자가 있다', field: 'now', pattern: '\\d' },
+ *       { label: '기회와 위험을 함께 적었다', fields: ['good', 'bad'] },
+ *     ]}
+ *   />
+ *
+ * checks — 채점이 아니라 «스스로 점검»이다. 글자 규칙으로만 보므로 사람처럼 읽지 못한다.
+ *   field + pattern : 그 칸에 정규식이 맞으면 통과
+ *   field + min     : 그 칸이 min 글자 이상이면 통과
+ *   fields          : 나열한 칸이 모두 채워지면 통과
+ *
+ * ⚠️ id 는 교과서 전체에서 하나뿐이어야 한다 (저장 열쇠다). tools/check-content.mjs 가 겹침을 막는다.
+ */
+interface Field {
+  key: string;
+  label: string;
+  type?: 'text' | 'area' | 'select' | 'check';
+  rows?: number;
+  hint?: string;
+  placeholder?: string;
+  options?: string[];
+}
+interface Check {
+  label: string;
+  field?: string;
+  fields?: string[];
+  pattern?: string;
+  min?: number;
+}
+interface Props {
+  id: string;
+  title: string;
+  fields: Field[];
+  checks?: Check[];
+  /** 활동지 머리에 넣을 한 줄 안내 */
+  intro?: string;
+}
+const { id, title, fields, checks = [], intro } = Astro.props;
+
+const 열쇠들 = new Set(fields.map((f) => f.key));
+if (열쇠들.size !== fields.length) throw new Error(`Worksheet(${id}): key 가 겹친다`);
+for (const c of checks) {
+  for (const k of [c.field, ...(c.fields ?? [])].filter(Boolean)) {
+    if (!열쇠들.has(k!)) throw new Error(`Worksheet(${id}): 점검 "${c.label}" 이 없는 칸 ${k} 을 본다`);
+  }
+  if (c.pattern) new RegExp(c.pattern); // 정규식이 틀리면 빌드에서 멈춘다
+}
+for (const f of fields) {
+  if ((f.type === 'select' || f.type === 'check') && !f.options?.length) {
+    throw new Error(`Worksheet(${id}): ${f.key} 에 options 가 없다`);
+  }
+}
+---
+
+<section class="ws" data-ws={id} data-ws-title={title} data-checks={JSON.stringify(checks)}>
+  <header class="ws__head">
+    <span class="ws__label">활동지</span>
+    <h4 class="ws__title">{title}</h4>
+    <span class="ws__saved" data-saved aria-live="polite"></span>
+  </header>
+  {intro && <p class="ws__intro">{intro}</p>}
+
+  <div class="ws__fields">
+    {
+      fields.map((f) => {
+        const fid = `ws-${id}-${f.key}`;
+        const t = f.type ?? 'area';
+        return (
+          <div class="ws__field" data-field={f.key} data-type={t} data-label={f.label}>
+            {t === 'check' ? (
+              <fieldset class="ws__set">
+                <legend>{f.label}</legend>
+                {f.hint && <p class="ws__hint">{f.hint}</p>}
+                <div class="ws__checks">
+                  {f.options!.map((o) => (
+                    <label class="ws__chk">
+                      <input type="checkbox" value={o} />
+                      <span>{o}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <>
+                <label for={fid}>{f.label}</label>
+                {f.hint && <p class="ws__hint">{f.hint}</p>}
+                {t === 'select' ? (
+                  <select id={fid}>
+                    <option value="">— 고르기 —</option>
+                    {f.options!.map((o) => (
+                      <option value={o}>{o}</option>
+                    ))}
+                  </select>
+                ) : t === 'text' ? (
+                  <input id={fid} type="text" placeholder={f.placeholder ?? ''} />
+                ) : (
+                  <textarea id={fid} rows={f.rows ?? 3} placeholder={f.placeholder ?? ''} />
+                )}
+              </>
+            )}
+          </div>
+        );
+      })
+    }
+  </div>
+
+  {
+    checks.length > 0 && (
+      <div class="ws__self">
+        <span class="ws__self-label">스스로 점검</span>
+        <ul data-check-list>
+          {checks.map((c, i) => (
+            <li data-check={i}>
+              <span class="ws__mark" aria-hidden="true">○</span> {c.label}
+            </li>
+          ))}
+        </ul>
+        <p class="ws__self-note">
+          글자 규칙으로 살펴보는 점검표다. 다 켜졌다고 좋은 답이 되는 것은 아니다 — 마지막 판단은 내가 한다.
+        </p>
+      </div>
+    )
+  }
+
+  <div class="ws__actions">
+    <button type="button" class="ws__btn ws__btn--main" data-download>⬇ 내려받기</button>
+    <button type="button" class="ws__btn" data-print>🖨 인쇄</button>
+    <button type="button" class="ws__btn ws__btn--quiet" data-clear>지우기</button>
+  </div>
+  <p class="ws__note">
+    적은 내용은 이 브라우저에만 저장된다. 다른 컴퓨터로 옮기거나 제출하려면 내려받는다.
+  </p>
+</section>
+
+<script>
+  const 저장머리 = 'swlife-ws:';
+
+  function 이스케이프(s: string) {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  }
+
+  for (const ws of document.querySelectorAll<HTMLElement>('[data-ws]')) {
+    const id = ws.dataset.ws!;
+    const 열쇠 = 저장머리 + id;
+    const 상태 = ws.querySelector<HTMLElement>('[data-saved]')!;
+    const 점검 = JSON.parse(ws.dataset.checks || '[]') as {
+      label: string; field?: string; fields?: string[]; pattern?: string; min?: number;
+    }[];
+    const 칸들 = [...ws.querySelectorAll<HTMLElement>('[data-field]')];
+
+    /** 칸 하나의 값 — 체크 칸은 고른 것들의 배열 */
+    function 값(칸: HTMLElement): string | string[] {
+      if (칸.dataset.type === 'check') {
+        return [...칸.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
+      }
+      return (칸.querySelector('input, textarea, select') as HTMLInputElement).value;
+    }
+    function 모두읽기() {
+      const o: Record<string, string | string[]> = {};
+      for (const 칸 of 칸들) o[칸.dataset.field!] = 값(칸);
+      return o;
+    }
+    function 채움(v: string | string[] | undefined) {
+      return Array.isArray(v) ? v.length > 0 : !!v && v.trim().length > 0;
+    }
+
+    function 점검하기() {
+      const v = 모두읽기();
+      점검.forEach((c, i) => {
+        let ok = false;
+        if (c.fields) ok = c.fields.every((k) => 채움(v[k]));
+        else if (c.field) {
+          const t = String(v[c.field] ?? '');
+          ok = c.pattern ? new RegExp(c.pattern).test(t) : c.min ? t.trim().length >= c.min : 채움(v[c.field]);
+        }
+        const li = ws.querySelector<HTMLElement>(`[data-check="${i}"]`);
+        if (li) {
+          li.classList.toggle('is-ok', ok);
+          li.querySelector('.ws__mark')!.textContent = ok ? '●' : '○';
+        }
+      });
+    }
+
+    /* 불러오기 — localStorage 가 막힌 환경에서도 활동지는 쓸 수 있어야 한다 */
+    try {
+      const 저장 = JSON.parse(localStorage.getItem(열쇠) || '{}');
+      for (const 칸 of 칸들) {
+        const v = 저장[칸.dataset.field!];
+        if (v === undefined) continue;
+        if (칸.dataset.type === 'check') {
+          for (const i of 칸.querySelectorAll<HTMLInputElement>('input')) i.checked = (v as string[]).includes(i.value);
+        } else (칸.querySelector('input, textarea, select') as HTMLInputElement).value = v;
+      }
+    } catch {
+      /* 무시 */
+    }
+    점검하기();
+
+    let 타이머 = 0;
+    ws.addEventListener('input', () => {
+      점검하기();
+      clearTimeout(타이머);
+      타이머 = window.setTimeout(() => {
+        try {
+          localStorage.setItem(열쇠, JSON.stringify(모두읽기()));
+          상태.textContent = '저장됨 ✓';
+        } catch {
+          상태.textContent = '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자';
+        }
+      }, 400);
+    });
+
+    /* 기본 confirm 창은 쓰지 않는다 — 한 번 누르면 단추가 「정말 지울까?」로 바뀌고, 3초 안에 다시 눌러야 지운다 */
+    const 지우기 = ws.querySelector<HTMLButtonElement>('[data-clear]')!;
+    let 확인중 = false;
+    지우기.addEventListener('click', () => {
+      if (!확인중) {
+        확인중 = true;
+        지우기.textContent = '정말 지울까? 한 번 더';
+        setTimeout(() => {
+          확인중 = false;
+          지우기.textContent = '지우기';
+        }, 3000);
+        return;
+      }
+      확인중 = false;
+      지우기.textContent = '지우기';
+      for (const 칸 of 칸들) {
+        if (칸.dataset.type === 'check') 칸.querySelectorAll<HTMLInputElement>('input').forEach((i) => (i.checked = false));
+        else (칸.querySelector('input, textarea, select') as HTMLInputElement).value = '';
+      }
+      try {
+        localStorage.removeItem(열쇠);
+      } catch {
+        /* 무시 */
+      }
+      상태.textContent = '지웠다';
+      점검하기();
+    });
+
+    ws.querySelector('[data-print]')!.addEventListener('click', () => window.print());
+
+    ws.querySelector('[data-download]')!.addEventListener('click', () => {
+      const v = 모두읽기();
+      const 제목 = ws.dataset.wsTitle!;
+      const 오늘 = new Date().toLocaleDateString('ko-KR');
+      const 본문 = 칸들
+        .map((칸) => {
+          const x = v[칸.dataset.field!];
+          const 글 = Array.isArray(x) ? x.join(', ') : x;
+          return `<h2>${이스케이프(칸.dataset.label!)}</h2><div class="a">${글 ? 이스케이프(글) : '<span class="e">(비어 있음)</span>'}</div>`;
+        })
+        .join('\n');
+      const 점검글 = [...ws.querySelectorAll<HTMLElement>('[data-check]')]
+        .map((li) => `<li>${li.classList.contains('is-ok') ? '●' : '○'} ${이스케이프(li.textContent!.replace(/^[○●]\s*/, '').trim())}</li>`)
+        .join('');
+      const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${이스케이프(제목)}</title>
+<style>body{font-family:'Malgun Gothic',sans-serif;max-width:760px;margin:32px auto;padding:0 20px;line-height:1.7;color:#1c2536}
+h1{font-size:1.5rem;border-bottom:3px solid #b4492b;padding-bottom:8px}h2{font-size:1.05rem;margin:22px 0 6px;color:#8f3418}
+.a{white-space:pre-wrap;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;background:#fafafa}.e{color:#94a3b8}
+.m{color:#64748b;font-size:.9rem}ul{padding-left:1.2em}footer{margin-top:40px;font-size:.8rem;color:#94a3b8}</style></head><body>
+<h1>${이스케이프(제목)}</h1><p class="m">작성일 ${오늘} · 「소프트웨어와 생활」 웹 교과서 활동지</p>
+<p class="m">이름·학번: ______________________ (파일을 내기 전에 직접 적는다)</p>
+${본문}
+${점검글 ? `<h2>스스로 점검</h2><ul>${점검글}</ul>` : ''}
+<footer>© 2026 티쳐무 · 「소프트웨어와 생활」 웹 교과서 — 학생이 적은 내용은 학생의 것이다.</footer></body></html>`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      a.download = `${제목}.html`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      }, 500);
+    });
+  }
+</script>
+
+<style>
+  .ws {
+    margin: var(--space-6) 0;
+    border: 1.5px solid var(--c-primary);
+    border-radius: var(--radius);
+    background: var(--c-surface);
+    overflow: hidden;
+  }
+  .ws__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 11px var(--space-4);
+    background: var(--c-primary-soft);
+    flex-wrap: wrap;
+  }
+  .ws__label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--c-primary);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+  }
+  .ws__title {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .ws__saved {
+    margin-left: auto;
+    font-size: 0.82rem;
+    color: var(--ok);
+  }
+  .ws__intro {
+    margin: var(--space-4) var(--space-4) 0;
+    color: var(--c-text-soft);
+  }
+  .ws__fields {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+  .ws__field label,
+  .ws__set legend {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .ws__set {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .ws__hint {
+    margin: 0 0 6px;
+    font-size: 0.86rem;
+    color: var(--c-text-faint);
+  }
+  .ws__field textarea,
+  .ws__field input[type='text'],
+  .ws__field select {
+    width: 100%;
+    font: inherit;
+    font-size: 1rem;
+    padding: 10px 12px;
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface-2);
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .ws__field textarea:focus,
+  .ws__field input:focus,
+  .ws__field select:focus {
+    outline: 3px solid var(--c-primary-soft);
+    border-color: var(--c-primary);
+  }
+  .ws__checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .ws__chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-weight: 500 !important;
+  }
+  .ws__chk:has(input:checked) {
+    border-color: var(--c-primary);
+    background: var(--c-primary-soft);
+  }
+  .ws__self {
+    margin: 0 var(--space-4) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface-2);
+    border: 1px dashed var(--c-border-strong);
+  }
+  .ws__self-label {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--c-text-soft);
+  }
+  .ws__self ul {
+    list-style: none;
+    margin: 6px 0;
+    padding: 0;
+  }
+  .ws__self li {
+    color: var(--c-text-faint);
+  }
+  .ws__self li.is-ok {
+    color: var(--ok);
+    font-weight: 600;
+  }
+  .ws__self-note {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--c-text-faint);
+  }
+  .ws__actions {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-4);
+    flex-wrap: wrap;
+  }
+  .ws__btn {
+    font: inherit;
+    font-weight: 700;
+    padding: 10px 18px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--c-border-strong);
+    background: var(--c-surface);
+    cursor: pointer;
+  }
+  .ws__btn--main {
+    background: var(--c-primary);
+    border-color: var(--c-primary);
+    color: #fff;
+  }
+  .ws__btn--quiet {
+    margin-left: auto;
+    color: var(--c-text-faint);
+  }
+  .ws__note {
+    margin: var(--space-2) var(--space-4) var(--space-4);
+    font-size: 0.8rem;
+    color: var(--c-text-faint);
+  }
+  @media print {
+    .ws__actions,
+    .ws__note,
+    .ws__saved {
+      display: none;
+    }
+    .ws {
+      break-inside: avoid;
+    }
+  }
+</style>

@@ -1,0 +1,241 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 시안 만들기 (Ⅴ-5·6) — 눌러 볼 수 있는 화면 설계(프로토타입)
+ *
+ * 화면을 여러 장 만들고, 화면마다 부품(제목·글·입력칸·단추·목록·그림 자리)을 쌓는다.
+ * 단추에는 «누르면 갈 화면»을 정한다. 오른쪽 휴대 전화 안의 단추는 실제로 눌린다 —
+ * 코드를 한 줄도 쓰지 않고 «써 보게» 할 수 있는 것이 시안의 힘이다.
+ *
+ * 점검(projtools.js 의 시안점검)이 찾는 것 —
+ *   오류: 갈 곳이 없는 단추, 지운 화면으로 가는 단추 (눌러 보면 고장)
+ *   주의: 막다른 화면, 첫 화면에서 갈 수 없는 화면, 빈 화면, 글자 없는 단추 (써 보는 사람이 헤맴)
+ * [⬇ 눌러 보는 시안 내려받기] 는 HTML 파일 하나를 만든다 — 친구 휴대 전화로 열어 «사용자 시험»을 한다.
+ *
+ * `store` 를 주면 다른 차시의 같은 시안을 이어서 고친다(저장 열쇠 swlife-proto:<store>).
+ *
+ * MDX 사용법
+ *   <ProtoBuilder id="u5-l5-proto" />
+ *   <ProtoBuilder id="u5-l6-proto" store="u5-l5-proto" />
+ */
+import { 요소종류 } from '@lib/projtools.js';
+interface Props {
+  id: string;
+  store?: string;
+}
+const { id, store } = Astro.props;
+---
+
+<section class="lab pj" data-proto={id} data-store={store ?? id}>
+  <header class="lab__head">
+    <span class="lab__badge">시안 만들기</span>
+    <span class="lab__title">눌러 보는 화면 설계</span>
+  </header>
+  <p class="pj__how">
+    화면을 만들고 부품을 쌓은 뒤, 단추마다 <strong>누르면 갈 화면</strong>을 정한다. 오른쪽 휴대 전화의 단추는 진짜로 눌린다.
+  </p>
+
+  <div class="pj-proto">
+    <div>
+      <div class="pj-tabs" data-tabs role="tablist" aria-label="화면 목록"></div>
+      <div class="lab__row pj__inline" style="flex-wrap:wrap">
+        <button type="button" class="lab__btn lab__btn--ghost" data-act="addscreen">＋ 화면 더하기</button>
+        <button type="button" class="lab__btn lab__btn--ghost" data-act="delscreen">이 화면 지우기</button>
+      </div>
+      <label class="pj__field" style="margin-top:var(--space-3)"><span>화면 이름</span>
+        <input type="text" data-screen-title maxlength="24" /></label>
+      <div><b style="font-size:.86rem">부품 더하기</b>
+        <div class="pj-palette">
+          {Object.entries(요소종류).map(([k, v]) => <button type="button" class="pj__chip" data-add={k}>＋ {v.표시}</button>)}
+        </div>
+      </div>
+      <ol class="pj-els" data-els></ol>
+    </div>
+    <div>
+      <div class="pj-phone" data-phone aria-live="polite"></div>
+      <p class="pj__note" style="text-align:center">휴대 전화 속 단추를 눌러 보자 — 왼쪽도 그 화면으로 바뀐다.</p>
+    </div>
+  </div>
+
+  <div class="pj__checks" data-issuewrap>
+    <b>시안 점검</b>
+    <ul class="pj-issues" data-issues></ul>
+    <b style="display:block;margin-top:var(--space-3)">화면 이동 지도</b>
+    <ul class="pj-flow" data-flow></ul>
+  </div>
+
+  <div class="pj__actions">
+    <button type="button" class="lab__btn" data-act="download">⬇ 눌러 보는 시안 내려받기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="example">예시 시안 불러오기</button>
+    <button type="button" class="lab__btn lab__btn--ghost pj__quiet" data-act="reset">처음부터</button>
+  </div>
+  <p class="pj__note" data-saved>만든 시안은 이 브라우저에만 저장된다. 친구에게 보여 주거나 제출하려면 내려받는다.</p>
+</section>
+
+<script>
+  import { 요소종류, 새시안, 새화면id, 시안예시, 시안점검, 시안흐름, 시안HTML, 요소HTML, 미리보기CSS, 이스케이프, 읽기, 쓰기 } from '@lib/projtools.js';
+  import { 두번확인, 내려받기 } from '@lib/pjui';
+
+  /* 미리보기 부품 모양은 내려받는 파일과 같게 — 한 번만 문서에 넣는다 */
+  if (!document.getElementById('pj-pv-css')) {
+    const st = document.createElement('style');
+    st.id = 'pj-pv-css';
+    st.textContent = 미리보기CSS;
+    document.head.appendChild(st);
+  }
+
+  type 요소 = { 종류: keyof typeof 요소종류; 글: string; 갈곳?: string };
+  type 화면 = { id: string; 제목: string; 요소: 요소[] };
+  type 시안 = { 화면: 화면[] };
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-proto]')) {
+    const 열쇠 = 'swlife-proto:' + root.dataset.store;
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    let 판: 시안 = 읽기(열쇠) ?? 새시안();
+    if (!판.화면?.length) 판 = 새시안();
+    let 지금 = 판.화면[0].id;
+    const 이화면 = () => 판.화면.find((h) => h.id === 지금) ?? 판.화면[0];
+
+    function 저장() {
+      $('[data-saved]').textContent = 쓰기(열쇠, 판)
+        ? '저장됨 ✓ — 이 브라우저에만 남는다. 친구에게 보여 주거나 제출하려면 내려받는다.'
+        : '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자.';
+    }
+
+    function 부품줄(e: 요소, i: number, 개수: number) {
+      const 갈곳 =
+        e.종류 === '단추'
+          ? `<select data-i="${i}" data-f="갈곳" aria-label="누르면 갈 화면"><option value="">— 누르면 갈 화면 —</option>${판.화면
+              .map((h) => `<option value="${h.id}"${h.id === e.갈곳 ? ' selected' : ''}>→ ${이스케이프(h.제목)}</option>`)
+              .join('')}</select>`
+          : '';
+      const 글칸 =
+        e.종류 === '목록'
+          ? `<textarea rows="3" data-i="${i}" data-f="글" aria-label="목록 — 한 줄에 하나">${이스케이프(e.글)}</textarea>`
+          : `<input type="text" data-i="${i}" data-f="글" value="${이스케이프(e.글)}" aria-label="${요소종류[e.종류].표시} 글">`;
+      return `<li class="pj-el"><span class="pj-el__kind">${요소종류[e.종류].표시}</span><div class="pj-el__main">${글칸}${갈곳}</div>
+        <div class="pj-el__tools"><button type="button" class="pj-ico" data-mv="-1" data-i="${i}" title="위로"${i === 0 ? ' disabled' : ''}>↑</button>
+        <button type="button" class="pj-ico" data-mv="1" data-i="${i}" title="아래로"${i === 개수 - 1 ? ' disabled' : ''}>↓</button>
+        <button type="button" class="pj-ico" data-del="${i}" title="지우기">✕</button></div></li>`;
+    }
+
+    function 그리기() {
+      const h = 이화면();
+      지금 = h.id;
+      const 문제 = 시안점검(판);
+      const 문제화면 = new Set(문제.map((x) => x.화면));
+      $('[data-tabs]').innerHTML = 판.화면
+        .map((x, i) => `<button type="button" role="tab" data-tab="${x.id}" aria-selected="${x.id === h.id}" class="${x.id === h.id ? 'is-on' : ''} ${문제화면.has(x.id) ? 'is-bad' : ''}">${i + 1}. ${이스케이프(x.제목)}</button>`)
+        .join('');
+      $<HTMLInputElement>('[data-screen-title]').value = h.제목;
+      $<HTMLButtonElement>('[data-act="delscreen"]').disabled = 판.화면.length < 2;
+      $('[data-els]').innerHTML = h.요소.length ? h.요소.map((e, i) => 부품줄(e, i, h.요소.length)).join('') : '<li class="pj__note">아직 부품이 없다. 위에서 더한다.</li>';
+      휴대폰();
+      $('[data-issues]').innerHTML = 문제.length
+        ? 문제.map((x) => `<li data-lv="${x.수준}" data-go="${x.화면}">${x.수준 === '오류' ? '⛔' : '⚠'} ${이스케이프(x.글)}</li>`).join('')
+        : '<li class="is-ok">● 고장 난 단추도, 막다른 화면도 없다. 이제 친구에게 써 보게 하자.</li>';
+      const 흐름 = 시안흐름(판);
+      $('[data-flow]').innerHTML = 흐름.length
+        ? 흐름.map((f) => `<li>${이스케이프(f.에서)} — <b>[${이스케이프(f.단추)}]</b> → ${이스케이프(f.으로)}</li>`).join('')
+        : '<li class="pj__note">단추에 갈 화면을 정하면 여기에 길이 그려진다.</li>';
+    }
+
+    function 휴대폰() {
+      const h = 이화면();
+      $('[data-phone]').innerHTML = `<p class="pj-phone__tag">${이스케이프(h.제목)}</p>${h.요소.map(요소HTML).join('')}`;
+    }
+
+    /* 탭·문제 목록·휴대 전화 단추 — 모두 «그 화면으로 가기» */
+    root.addEventListener('click', (ev) => {
+      const t = ev.target as HTMLElement;
+      const 탭 = t.closest<HTMLElement>('[data-tab]');
+      const 문제 = t.closest<HTMLElement>('[data-issues] [data-go]');
+      const 폰단추 = t.closest<HTMLElement>('[data-phone] [data-go]');
+      const 갈 = 탭?.dataset.tab ?? 문제?.dataset.go ?? 폰단추?.dataset.go;
+      if (갈 && 판.화면.some((h) => h.id === 갈)) {
+        지금 = 갈;
+        그리기();
+      }
+    });
+
+    root.querySelector('[data-els]')!.addEventListener('input', (ev) => {
+      const el = ev.target as HTMLInputElement;
+      if (!el.dataset.f) return;
+      const e = 이화면().요소[Number(el.dataset.i)];
+      (e as Record<string, unknown>)[el.dataset.f] = el.value;
+      if (el.dataset.f === '갈곳') 그리기();
+      else {
+        휴대폰();
+        const 문제 = 시안점검(판);
+        $('[data-issues]').innerHTML = 문제.length
+          ? 문제.map((x) => `<li data-lv="${x.수준}" data-go="${x.화면}">${x.수준 === '오류' ? '⛔' : '⚠'} ${이스케이프(x.글)}</li>`).join('')
+          : '<li class="is-ok">● 고장 난 단추도, 막다른 화면도 없다. 이제 친구에게 써 보게 하자.</li>';
+      }
+      저장();
+    });
+    root.querySelector('[data-els]')!.addEventListener('change', (ev) => {
+      if ((ev.target as HTMLElement).dataset.f === '갈곳') 그리기();
+    });
+    root.querySelector('[data-els]')!.addEventListener('click', (ev) => {
+      const t = ev.target as HTMLElement;
+      const 목록 = 이화면().요소;
+      if (t.dataset.mv) {
+        const i = Number(t.dataset.i), j = i + Number(t.dataset.mv);
+        [목록[i], 목록[j]] = [목록[j], 목록[i]];
+      } else if (t.dataset.del !== undefined) 목록.splice(Number(t.dataset.del), 1);
+      else return;
+      그리기();
+      저장();
+    });
+
+    for (const b of root.querySelectorAll<HTMLButtonElement>('[data-add]')) {
+      b.addEventListener('click', () => {
+        const 종류 = b.dataset.add as keyof typeof 요소종류;
+        이화면().요소.push({ 종류, 글: 요소종류[종류].기본, ...(종류 === '단추' ? { 갈곳: '' } : {}) });
+        그리기();
+        저장();
+        root.querySelector<HTMLElement>('[data-els] li:last-child input, [data-els] li:last-child textarea')?.focus();
+      });
+    }
+    $('[data-screen-title]').addEventListener('input', (ev) => {
+      이화면().제목 = (ev.target as HTMLInputElement).value;
+      const 탭 = root.querySelector<HTMLElement>(`[data-tab="${지금}"]`);
+      if (탭) 탭.textContent = `${판.화면.indexOf(이화면()) + 1}. ${이화면().제목}`;
+      휴대폰();
+      저장();
+    });
+    $('[data-screen-title]').addEventListener('change', 그리기);
+    $('[data-act="addscreen"]').addEventListener('click', () => {
+      const id = 새화면id(판);
+      판.화면.push({ id, 제목: `화면 ${판.화면.length + 1}`, 요소: [] });
+      지금 = id;
+      그리기();
+      저장();
+    });
+    두번확인($<HTMLButtonElement>('[data-act="delscreen"]'), () => {
+      if (판.화면.length < 2) return;
+      판.화면 = 판.화면.filter((h) => h.id !== 지금);
+      지금 = 판.화면[0].id;
+      그리기();
+      저장();
+    });
+    두번확인($<HTMLButtonElement>('[data-act="example"]'), () => {
+      판 = JSON.parse(JSON.stringify(시안예시));
+      지금 = 판.화면[0].id;
+      그리기();
+      저장();
+    });
+    두번확인($<HTMLButtonElement>('[data-act="reset"]'), () => {
+      판 = 새시안();
+      지금 = 's1';
+      그리기();
+      저장();
+    });
+    $('[data-act="download"]').addEventListener('click', () => {
+      const 이름 = (판.화면[0].요소.find((e) => e.종류 === '제목')?.글 || '우리 팀 시안').trim();
+      내려받기(`시안 ${이름}`, 시안HTML(판, 이름));
+    });
+
+    그리기();
+  }
+</script>

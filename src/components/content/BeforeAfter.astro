@@ -1,0 +1,346 @@
+---
+/**
+ * © 2026 티쳐무 · 모든 권리 보유
+ * 도입 전후 비교판 — 같은 일을 소프트웨어 도입 「전」과 「후」로 나란히 놓는다
+ *
+ * 성취기준 해설 [12소생01-02] 「소프트웨어 기술을 도입하기 전과 후로 구분하여 분석하고」를
+ * 그대로 화면으로 만든 것이다. ① 두 과정을 단계별로 견주고 ② 소프트웨어가 맡은 일을
+ * 입력·처리·출력으로 열어 보고 ③ 무엇이 바뀌었는지 직접 골라 확인한다.
+ *
+ * MDX 사용법
+ *   <BeforeAfter aspects={['시간', '비용', …]} cases={[
+ *     { 이름: '버스 기다리기', 아이콘: '🚌',
+ *       전: { 단계: ['정류장에 간다', …], 요약: '언제 올지 모른다' },
+ *       후: { 단계: ['앱을 연다', …], 요약: '몇 분 뒤 오는지 안다' },
+ *       입력: '버스의 GPS 위치', 처리: '…', 출력: '…',
+ *       바뀐것: { 시간: '기다리는 시간을 …', 접근성: '…' } },
+ *   ]} />
+ *
+ * 바뀐것 의 열쇠는 aspects 안의 이름이어야 한다. 값은 «왜 그런가» 한 줄이다.
+ */
+interface Side {
+  단계: string[];
+  요약: string;
+}
+interface Case {
+  이름: string;
+  아이콘?: string;
+  전: Side;
+  후: Side;
+  입력: string;
+  처리: string;
+  출력: string;
+  바뀐것: Record<string, string>;
+}
+interface Props {
+  cases: Case[];
+  aspects: string[];
+  title?: string;
+}
+const { cases, aspects, title = '소프트웨어 도입 전과 후' } = Astro.props;
+for (const c of cases)
+  for (const k of Object.keys(c.바뀐것))
+    if (!aspects.includes(k)) throw new Error(`BeforeAfter: "${c.이름}" 의 바뀐것 "${k}" 가 aspects 에 없다`);
+---
+
+<div class="ba" data-ba>
+  <div class="ba__head">
+    <span class="ba__label">비교판</span>
+    <span class="ba__title">{title}</span>
+  </div>
+
+  <div class="ba__tabs" role="tablist">
+    {
+      cases.map((c, i) => (
+        <button type="button" role="tab" class="ba__tab" data-tab={i} aria-selected={i === 0 ? 'true' : 'false'}>
+          {c.아이콘 && <span aria-hidden="true">{c.아이콘} </span>}
+          {c.이름}
+        </button>
+      ))
+    }
+  </div>
+
+  {
+    cases.map((c, i) => (
+      <div class="ba__case" data-case={i} hidden={i !== 0} data-answer={JSON.stringify(c.바뀐것)}>
+        <div class="ba__cols">
+          <section class="ba__side ba__side--before">
+            <h5>도입 전</h5>
+            <ol>
+              {c.전.단계.map((s) => (
+                <li>{s}</li>
+              ))}
+            </ol>
+            <p class="ba__sum">{c.전.요약}</p>
+            <span class="ba__n">{c.전.단계.length}단계</span>
+          </section>
+          <div class="ba__arrow" aria-hidden="true">→</div>
+          <section class="ba__side ba__side--after">
+            <h5>도입 후</h5>
+            <ol>
+              {c.후.단계.map((s) => (
+                <li>{s}</li>
+              ))}
+            </ol>
+            <p class="ba__sum">{c.후.요약}</p>
+            <span class="ba__n">{c.후.단계.length}단계</span>
+          </section>
+        </div>
+
+        <details class="ba__ipo">
+          <summary>소프트웨어가 맡은 일 열어 보기 — 입력 · 처리 · 출력</summary>
+          <div class="ba__ipo-row">
+            <div><span>입력</span>{c.입력}</div>
+            <div><span>처리</span>{c.처리}</div>
+            <div><span>출력</span>{c.출력}</div>
+          </div>
+        </details>
+
+        <fieldset class="ba__pick">
+          <legend>이 사례에서 «바뀐 것»을 모두 골라 보자</legend>
+          <div class="ba__chips">
+            {aspects.map((a) => (
+              <label class="ba__chip">
+                <input type="checkbox" value={a} />
+                <span>{a}</span>
+              </label>
+            ))}
+          </div>
+          <button type="button" class="ba__check" data-check>확인</button>
+          <ul class="ba__result" data-result aria-live="polite"></ul>
+        </fieldset>
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  function esc(s: string) {
+    return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  }
+  for (const root of document.querySelectorAll<HTMLElement>('[data-ba]')) {
+    const 탭 = [...root.querySelectorAll<HTMLElement>('[data-tab]')];
+    const 판 = [...root.querySelectorAll<HTMLElement>('[data-case]')];
+    탭.forEach((t, i) =>
+      t.addEventListener('click', () => {
+        탭.forEach((x, j) => x.setAttribute('aria-selected', String(i === j)));
+        판.forEach((p, j) => (p.hidden = i !== j));
+      })
+    );
+    for (const p of 판) {
+      const 정답 = JSON.parse(p.dataset.answer!) as Record<string, string>;
+      p.querySelector('[data-check]')!.addEventListener('click', () => {
+        const 고름 = new Set(
+          [...p.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value)
+        );
+        const 줄: string[] = [];
+        let 맞음 = 0;
+        for (const [k, 왜] of Object.entries(정답)) {
+          if (고름.has(k)) {
+            맞음++;
+            줄.push(`<li class="ok"><b>✓ ${esc(k)}</b> — ${esc(왜)}</li>`);
+          } else {
+            줄.push(`<li class="miss"><b>놓친 것: ${esc(k)}</b> — ${esc(왜)}</li>`);
+          }
+        }
+        for (const k of 고름) {
+          if (!(k in 정답)) {
+            줄.push(
+              `<li class="extra"><b>? ${esc(k)}</b> — 이 사례에서는 크게 바뀌지 않았다고 보았다. 그래도 바뀌었다고 생각하면 근거를 적어 토의해 보자.</li>`
+            );
+          }
+        }
+        const 총 = Object.keys(정답).length;
+        줄.unshift(
+          `<li class="sum">${맞음 === 총 && 고름.size === 총 ? '모두 짚었다!' : `${총}가지 가운데 ${맞음}가지를 짚었다.`}</li>`
+        );
+        p.querySelector('[data-result]')!.innerHTML = 줄.join('');
+      });
+    }
+  }
+</script>
+
+<style>
+  .ba {
+    margin: var(--space-6) 0;
+    padding: var(--space-4) var(--space-5);
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: var(--radius);
+    background: var(--c-surface);
+  }
+  .ba__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    margin-bottom: var(--space-3);
+  }
+  .ba__label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--c-accent);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+  }
+  .ba__title {
+    font-weight: 800;
+    font-size: 1.05rem;
+  }
+  .ba__tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+  .ba__tab {
+    font: inherit;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: var(--radius-pill);
+    border: 1.5px solid var(--c-border-strong);
+    background: var(--c-surface);
+    cursor: pointer;
+  }
+  .ba__tab[aria-selected='true'] {
+    background: var(--c-primary);
+    border-color: var(--c-primary);
+    color: #fff;
+  }
+  .ba__cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: stretch;
+  }
+  @media (max-width: 640px) {
+    .ba__cols {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .ba__arrow {
+      transform: rotate(90deg);
+      justify-self: center;
+    }
+  }
+  .ba__arrow {
+    align-self: center;
+    font-size: 1.8rem;
+    color: var(--c-text-faint);
+  }
+  .ba__side {
+    position: relative;
+    padding: var(--space-3) var(--space-4) var(--space-5);
+    border-radius: var(--radius-sm);
+  }
+  .ba__side h5 {
+    margin: 0 0 var(--space-2);
+    font-size: 1rem;
+  }
+  .ba__side ol {
+    margin: 0;
+    padding-left: 1.3em;
+  }
+  .ba__side--before {
+    background: #f1f5f9;
+  }
+  .ba__side--after {
+    background: var(--c-primary-soft);
+  }
+  .ba__sum {
+    margin: var(--space-3) 0 0;
+    font-weight: 700;
+  }
+  .ba__n {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--c-text-faint);
+  }
+  .ba__ipo {
+    margin: var(--space-4) 0;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-4);
+  }
+  .ba__ipo summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--c-primary-deep);
+  }
+  .ba__ipo-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin: var(--space-3) 0 var(--space-2);
+  }
+  @media (max-width: 640px) {
+    .ba__ipo-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .ba__ipo-row div {
+    background: var(--c-surface-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    font-size: 0.93rem;
+  }
+  .ba__ipo-row span {
+    display: block;
+    font-weight: 800;
+    color: var(--c-accent);
+    font-size: 0.8rem;
+  }
+  .ba__pick {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .ba__pick legend {
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+  }
+  .ba__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .ba__chip {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 12px;
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .ba__chip:has(input:checked) {
+    border-color: var(--c-primary);
+    background: var(--c-primary-soft);
+  }
+  .ba__check {
+    margin-top: var(--space-3);
+    font: inherit;
+    font-weight: 700;
+    padding: 9px 20px;
+    border-radius: var(--radius-sm);
+    border: 0;
+    background: var(--c-primary);
+    color: #fff;
+    cursor: pointer;
+  }
+  .ba__result {
+    list-style: none;
+    padding: 0;
+    margin: var(--space-3) 0 0;
+  }
+  .ba__result :global(li) {
+    padding: 6px 10px;
+    margin: 4px 0;
+    border-radius: var(--radius-sm);
+  }
+  .ba__result :global(.ok) { background: var(--ok-soft); }
+  .ba__result :global(.miss) { background: var(--warn-soft); }
+  .ba__result :global(.extra) { background: var(--c-surface-2); }
+  .ba__result :global(.sum) { font-weight: 800; padding-left: 0; }
+</style>

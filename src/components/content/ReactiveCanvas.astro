@@ -1,0 +1,178 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 반응하는 캔버스 — 미디어 아트의 「입력 → 규칙 → 표현」을 손으로 겪어 본다
+ *
+ * 입자 수백 개가 흐른다. 학생은 입력(마우스 가로·세로 위치, 센서 슬라이더)을
+ * 표현(색·크기·빠르기·퍼짐)에 하나씩 짝지어 「규칙」을 만든다. 같은 입력이라도
+ * 어디에 짝짓느냐에 따라 작품의 느낌이 완전히 달라지는 것을 보는 것이 목적이다.
+ * 센서 슬라이더는 Ⅱ단원 가상 보드의 소리·빛 센서 자리를 흉내 낸 것이다.
+ *
+ * MDX 사용법
+ *   <ReactiveCanvas />
+ */
+---
+
+<section class="rc" data-rc>
+  <header class="rc__head">
+    <span class="rc__label">반응하는 캔버스</span>
+    <span class="rc__title">입력을 표현에 짝지어 보자</span>
+  </header>
+  <canvas width="720" height="360" data-cv aria-label="입력에 따라 움직임이 바뀌는 입자 그림"></canvas>
+  <div class="rc__ctl">
+    <label class="rc__sensor">센서 값 (소리 크기라고 하자)
+      <input type="range" min="0" max="100" value="20" data-sensor />
+    </label>
+    <div class="rc__maps" data-maps>
+      {
+        [
+          ['color', '색'],
+          ['size', '크기'],
+          ['speed', '빠르기'],
+          ['spread', '퍼짐'],
+        ].map(([k, n]) => (
+          <label>
+            <b>{n}</b> ←
+            <select data-map={k}>
+              <option value="">(고정)</option>
+              <option value="mx">마우스 가로 위치</option>
+              <option value="my">마우스 세로 위치</option>
+              <option value="sensor">센서 값</option>
+            </select>
+          </label>
+        ))
+      }
+    </div>
+    <p class="rc__rule" data-rule aria-live="polite"></p>
+  </div>
+</section>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-rc]')) {
+    const cv = root.querySelector<HTMLCanvasElement>('[data-cv]')!;
+    const g = cv.getContext('2d')!;
+    const W = cv.width, H = cv.height;
+    const 센서 = root.querySelector<HTMLInputElement>('[data-sensor]')!;
+    const 짝 = (k: string) => root.querySelector<HTMLSelectElement>(`[data-map="${k}"]`)!.value;
+    /* 처음엔 한 가지만 짝지어 둔다 — 무엇이 바뀌는지 바로 보이게 */
+    root.querySelector<HTMLSelectElement>('[data-map="color"]')!.value = 'mx';
+    root.querySelector<HTMLSelectElement>('[data-map="speed"]')!.value = 'sensor';
+
+    let mx = 0.5, my = 0.5;
+    cv.addEventListener('pointermove', (e) => {
+      const r = cv.getBoundingClientRect();
+      mx = (e.clientX - r.left) / r.width;
+      my = (e.clientY - r.top) / r.height;
+    });
+
+    const 입자 = Array.from({ length: 260 }, () => ({ x: Math.random() * W, y: Math.random() * H, a: Math.random() * Math.PI * 2, s: 0.6 + Math.random() }));
+    const 입력값 = (k: string, 기본: number) => (k === 'mx' ? mx : k === 'my' ? my : k === 'sensor' ? Number(센서.value) / 100 : 기본);
+    const 이름 = { mx: '마우스 가로 위치', my: '마우스 세로 위치', sensor: '센서 값' } as Record<string, string>;
+
+    function 규칙글() {
+      const 줄 = ([['color', '색'], ['size', '크기'], ['speed', '빠르기'], ['spread', '퍼짐']] as const)
+        .filter(([k]) => 짝(k))
+        .map(([k, n]) => `${이름[짝(k)]} → ${n}`);
+      root.querySelector('[data-rule]')!.textContent = 줄.length ? `지금의 규칙: ${줄.join(' / ')}` : '짝지은 것이 없다 — 작품이 입력에 반응하지 않는다';
+    }
+    root.addEventListener('change', 규칙글);
+    규칙글();
+
+    let 보임 = false;
+    new IntersectionObserver((es) => (보임 = es[0].isIntersecting)).observe(root);
+
+    function 그리기() {
+      requestAnimationFrame(그리기);
+      if (!보임) return;
+      const 색상 = 입력값(짝('color'), 0.55) * 300;
+      const 크기 = 1 + 입력값(짝('size'), 0.25) * 9;
+      const 빠르기 = 0.3 + 입력값(짝('speed'), 0.2) * 6;
+      const 퍼짐 = 입력값(짝('spread'), 0.15);
+      g.fillStyle = 'rgba(15, 23, 42, 0.18)';
+      g.fillRect(0, 0, W, H);
+      for (const p of 입자) {
+        p.a += (Math.random() - 0.5) * (0.1 + 퍼짐 * 1.2);
+        p.x += Math.cos(p.a) * 빠르기 * p.s;
+        p.y += Math.sin(p.a) * 빠르기 * p.s;
+        if (p.x < 0) p.x += W;
+        if (p.x > W) p.x -= W;
+        if (p.y < 0) p.y += H;
+        if (p.y > H) p.y -= H;
+        g.fillStyle = `hsl(${(색상 + p.s * 40) % 360} 85% 62%)`;
+        g.beginPath();
+        g.arc(p.x, p.y, 크기 * p.s, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    그리기();
+  }
+</script>
+
+<style>
+  .rc {
+    margin: var(--space-6) 0;
+    border: 2px solid #334155;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--c-surface);
+  }
+  .rc__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    padding: 11px var(--space-4);
+    background: #1e293b;
+    color: #fff;
+  }
+  .rc__label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    background: #a78bfa;
+    color: #1e1b4b;
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+  }
+  .rc__title { font-weight: 800; }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #0f172a;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .rc__ctl { padding: var(--space-3) var(--space-4); }
+  .rc__sensor {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: center;
+    font-weight: 700;
+  }
+  .rc__maps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-3);
+  }
+  @media (max-width: 560px) {
+    .rc__maps { grid-template-columns: minmax(0, 1fr); }
+  }
+  .rc__maps label { display: flex; gap: 6px; align-items: center; }
+  .rc__maps select {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.92rem;
+    padding: 5px;
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: 7px;
+  }
+  .rc__rule {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--c-surface-2);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+  }
+</style>

@@ -1,0 +1,352 @@
+#!/usr/bin/env node
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/* ============================================================
+   차시 본문 검증 — content/units/{NN}/{NN}.mdx
+   의존성 없음. Node 18 이상.
+
+   src/content.config.ts 가 약속한 "프런트매터와 curriculum.json 의 이중 확인"을
+   실제로 수행하는 스크립트다. 두 곳이 어긋나면 매핑이 조용히 깨지므로
+   빌드를 세워 막는다 (CLAUDE.md 3-1, 3-5).
+
+   검사 내용
+     1. 파일 경로와 프런트매터의 unit·lesson 이 일치하는가
+     2. unit·lesson 이 curriculum.json 에 실제로 있는가
+     3. title 이 curriculum.json 의 차시명과 같은가
+     4. standards 가 담당성취기준과 같은가 (순서까지)
+     5. langs 가 curriculum.json 의 언어와 같은가
+     6. 본문의 <QuizItem std="…"> 가 그 차시의 관련 성취기준 안에 있는가
+     7. status: published 인데 todo 나 [확인필요] 가 남아 있지 않은가
+     8. 본문에 [확인필요] 가 몇 건 남았는가
+     9. 문체 규칙(해요체 금지)에 어긋난 표현이 있는가 — 경고
+
+   사용법
+     node tools/check-content.mjs
+     node tools/check-content.mjs --todo-only
+     node tools/check-content.mjs --no-color
+
+   종료 코드
+     0  오류 없음 (경고만 있으면 0)
+     1  오류 있음
+     2  curriculum.json 을 읽을 수 없다
+   ============================================================ */
+
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, basename, dirname } from 'node:path';
+
+const TODO = '[확인필요]';
+const 본문루트 = 'content/units';
+const 교육과정 = 'content/curriculum.json';
+
+/* ---------- CLI ---------- */
+const argv = process.argv.slice(2);
+const opts = {
+  todoOnly: argv.includes('--todo-only'),
+  color: !argv.includes('--no-color') && process.stdout.isTTY !== false,
+};
+const c = (code, s) => (opts.color ? `[${code}m${s}[0m` : s);
+const red = (s) => c(31, s);
+const yellow = (s) => c(33, s);
+const green = (s) => c(32, s);
+const dim = (s) => c(90, s);
+const bold = (s) => c(1, s);
+
+/* ---------- 교육과정 데이터 ---------- */
+let data;
+try {
+  data = JSON.parse(readFileSync(교육과정, 'utf8'));
+} catch (e) {
+  console.error(red(`${교육과정} 을 읽을 수 없다: ${e.message}`));
+  process.exit(2);
+}
+
+/** "1-3" → 차시 객체. 프런트매터와 맞춰 보기 위한 색인이다. */
+const 차시색인 = new Map();
+for (const u of data.단원 ?? []) {
+  for (const l of u.차시 ?? []) {
+    차시색인.set(`${u.단원번호}-${l.차시번호}`, { 단원: u, 차시: l });
+  }
+}
+const 성취기준코드 = new Set(
+  (data.단원 ?? []).flatMap((u) => (u.성취기준 ?? []).map((s) => s.코드))
+);
+
+/* ---------- 본문 파일 모으기 ---------- */
+function mdx모으기(dir) {
+  let out = [];
+  let 목록;
+  try {
+    목록 = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const 이름 of 목록) {
+    const p = join(dir, 이름);
+    if (statSync(p).isDirectory()) out = out.concat(mdx모으기(p));
+    else if (/^\d{2}\.mdx?$/.test(이름)) out.push(p);
+  }
+  return out.sort();
+}
+
+/**
+ * 프런트매터를 뽑는다. YAML 파서를 두지 않고 이 프로젝트가 실제로 쓰는
+ * 형태(스칼라와 한 줄 배열)만 읽는다. content.config.ts 의 스키마가
+ * 이미 Astro 빌드에서 정밀 검증을 하므로, 여기서는 대조가 목적이다.
+ */
+function 프런트매터(src, rel, 오류) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
+  if (!m) {
+    오류.push(`${rel}: 프런트매터(--- 로 감싼 머리말)가 없다`);
+    return null;
+  }
+  const fm = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line);
+    if (!kv) continue;
+    const [, key, raw] = kv;
+    const v = raw.trim();
+    /* 따옴표로 시작하는 값은 YAML 이 그 따옴표 쌍까지만 값으로 읽는다.
+       lead: "돌아간다"와 "맞다"는 … 처럼 뒤에 글이 더 있으면 Astro 빌드가
+       "bad indentation of a mapping entry" 로 죽는다. 5단계까지 가서야
+       알아채면 원인을 짚기 어려우므로 여기서 먼저 잡는다. */
+    const q = v[0];
+    if ((q === '"' || q === "'") && !(v.length > 1 && v.endsWith(q) && v.indexOf(q, 1) === v.length - 1)) {
+      오류.push(
+        `${rel}: 프런트매터 ${key} 가 따옴표로 시작하는데 그 따옴표로 끝나지 않는다 — YAML 이 깨진다.\n` +
+          `        값 전체를 따옴표로 감싸거나, 「 」 같은 다른 인용부호를 쓴다.\n` +
+          `        ${key}: ${v.slice(0, 60)}${v.length > 60 ? '…' : ''}`
+      );
+    }
+    if (/^\[.*\]$/.test(v)) {
+      const 안 = v.slice(1, -1).trim();
+      fm[key] = 안
+        ? 안.split(',').map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
+        : [];
+    } else if (/^-?\d+$/.test(v)) {
+      fm[key] = Number(v);
+    } else {
+      fm[key] = v.replace(/^['"]|['"]$/g, '');
+    }
+  }
+  return { fm, 본문: src.slice(m[0].length) };
+}
+
+const 같은배열 = (a, b) =>
+  Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+
+/* ---------- 문체 규칙 (CLAUDE.md 4-1) ---------- */
+const 문체금지 = [
+  { re: /(해요|아요|어요|예요|이에요|에요)([.!?"”』\s]|$)/g, 이름: '해요체 종결' },
+  { re: /(랍니다|답니다|군요|네요|죠)([.!?"”』\s]|$)/g, 이름: '구어체 종결' },
+];
+
+/* ---------- 검사 ---------- */
+const 파일들 = mdx모으기(본문루트);
+const 오류 = [];
+const 경고 = [];
+const 확인필요 = [];
+let 통과 = 0;
+const 활동지id = new Map();
+
+for (const p of 파일들) {
+  const rel = relative(process.cwd(), p);
+  const src = readFileSync(p, 'utf8');
+  const 앞 = 오류.length;
+
+  const 결과 = 프런트매터(src, rel, 오류);
+  if (!결과) continue;
+  const { fm, 본문 } = 결과;
+
+  /* 1. 경로와 프런트매터 대조 — 파일을 옮겨 놓고 머리말을 안 고친 경우를 잡는다 */
+  const 경로단원 = Number(basename(dirname(p)));
+  const 경로차시 = Number(basename(p).replace(/\.mdx?$/, ''));
+  if (fm.unit !== 경로단원 || fm.lesson !== 경로차시) {
+    오류.push(
+      `${rel}: 파일 경로는 ${경로단원}단원 ${경로차시}차시인데 프런트매터는 ${fm.unit}단원 ${fm.lesson}차시다`
+    );
+  }
+
+  /* 2. curriculum.json 에 있는 차시인가 */
+  const 짝 = 차시색인.get(`${fm.unit}-${fm.lesson}`);
+  if (!짝) {
+    오류.push(
+      `${rel}: curriculum.json 에 ${fm.unit}단원 ${fm.lesson}차시가 없다 — 데이터를 먼저 추가한다`
+    );
+    continue;
+  }
+  const { 차시 } = 짝;
+
+  /* 3~5. 이중으로 적은 값들이 어긋나지 않았는가 */
+  if (fm.title !== 차시.차시명) {
+    오류.push(
+      `${rel}: title 이 curriculum.json 과 다르다\n        본문: ${fm.title}\n        데이터: ${차시.차시명}`
+    );
+  }
+  if (!같은배열(fm.standards, 차시.담당성취기준)) {
+    오류.push(
+      `${rel}: standards 가 담당성취기준과 다르다\n        본문: ${JSON.stringify(fm.standards)}\n        데이터: ${JSON.stringify(차시.담당성취기준)}`
+    );
+  }
+  const 데이터언어 = 차시.언어 ?? [];
+  if (!같은배열(fm.langs ?? [], 데이터언어)) {
+    오류.push(
+      `${rel}: langs 가 curriculum.json 의 언어와 다르다\n        본문: ${JSON.stringify(fm.langs ?? [])}\n        데이터: ${JSON.stringify(데이터언어)}`
+    );
+  }
+
+  /* 5-2. 집필 상태도 두 곳에 적힌다. 어긋나면 단원 목록과 본문이 서로 다른 말을 한다 */
+  if (fm.status !== 차시.상태) {
+    오류.push(
+      `${rel}: status 가 curriculum.json 의 상태와 다르다 — 본문: ${fm.status} / 데이터: ${차시.상태}`
+    );
+  }
+
+  /* 5-3. JSX 속성 안의 \" — MDX 가 깨진다.
+     stem="… \"7\" …" 처럼 적으면 JSX 가 첫 \" 에서 속성을 끝내고 그 뒤를
+     태그로 읽어 "Unexpected character after `<`" 로 죽는다. JSX 속성에는
+     백슬래시 이스케이프가 없다. 큰따옴표가 필요하면 「 」 를 쓴다.
+     astro build(5단계)까지 가서야 걸리면 원인을 짚기 어려우므로 여기서 잡는다. */
+  for (const m of 본문.matchAll(/^\s*(\w+)="[^"\n]*\\"/gm)) {
+    오류.push(
+      `${rel}: ${m[1]} 속성 안에 \\" 가 있다 — JSX 속성에는 백슬래시 이스케이프가 없어 MDX 가 깨진다.\n` +
+        `        큰따옴표 대신 「 」 를 쓰거나 속성값을 {\`…\`} 로 감싼다.`
+    );
+  }
+
+  /* 6. 문항의 성취기준 매핑 — 배지만 붙고 담당하지 않는 코드를 쓰는 것을 막는다 */
+  const 담당 = new Set(차시.담당성취기준);
+  for (const m of 본문.matchAll(/<QuizItem\b[^>]*?\bstd=["']([^"']+)["']/g)) {
+    const 코드 = m[1];
+    if (!성취기준코드.has(코드)) {
+      오류.push(`${rel}: 문항의 std="${코드}" 가 curriculum.json 에 없는 코드다`);
+    } else if (!담당.has(코드)) {
+      오류.push(
+        `${rel}: 문항의 std="${코드}" 가 이 차시의 관련 성취기준(${차시.담당성취기준.join(', ')})이 아니다`
+      );
+    }
+  }
+  /* std 없는 문항은 커버리지 근거로 쓸 수 없다 */
+  const 문항수 = [...본문.matchAll(/<QuizItem\b/g)].length;
+  const std있는문항 = [...본문.matchAll(/<QuizItem\b[^>]*?\bstd=/g)].length;
+  if (문항수 > std있는문항) {
+    경고.push(`${rel}: 확인 문제 ${문항수 - std있는문항}개에 std 가 없다 — 문항도 성취기준에 매핑한다`);
+  }
+
+  /* 7~8. [확인필요] 와 published 게이트 */
+  const todo개수 = 본문.split(TODO).length - 1;
+  if (todo개수 > 0) 확인필요.push(`${rel}: 본문에 ${TODO} ${todo개수}건`);
+  const 남은todo = Array.isArray(fm.todo) ? fm.todo.length : 0;
+  if (남은todo > 0) 확인필요.push(`${rel}: 프런트매터 todo ${남은todo}건`);
+
+  if (fm.status === 'published') {
+    if (todo개수 > 0) {
+      오류.push(`${rel}: status 가 published 인데 본문에 ${TODO} 가 ${todo개수}건 남았다`);
+    }
+    if (남은todo > 0) {
+      오류.push(`${rel}: status 가 published 인데 프런트매터 todo 가 ${남은todo}건 남았다`);
+    }
+  }
+
+  /* 9. 예제 코드의 들여쓰기 — 1~3칸을 쓰면 화면에서 되살릴 수 없다.
+     MDX 가 여러 줄 표현식의 둘째 줄부터 2칸을 지우므로 CodeSample.astro 가
+     「1칸 이상 들여쓴 줄에 2칸을 다시 붙여」 되돌린다. 원래가 1~3칸이면
+     되돌린 값이 원문과 달라진다(2칸과 0칸이 모두 0칸이 되어 구분되지 않는다).
+     파이썬·C 모두 4칸을 쓰므로 실무상 걸릴 일은 없고, 실수를 막는 울타리다. */
+  for (const m of 본문.matchAll(/<CodeSample\b[\s\S]*?>\s*\{`([\s\S]*?)`\}\s*<\/CodeSample>/g)) {
+    const 줄들 = m[1].replace(/\r\n/g, '\n').split('\n');
+    for (let i = 0; i < 줄들.length; i++) {
+      const 칸 = 줄들[i].length - 줄들[i].trimStart().length;
+      if (줄들[i].trim() !== '' && 칸 >= 1 && 칸 <= 3) {
+        오류.push(
+          `${rel}: 예제 코드 ${i + 1}번째 줄이 ${칸}칸 들여쓰기다 — MDX 가 2칸을 지워 화면에서 되살릴 수 없다. 4칸 단위로 적는다`
+        );
+      }
+    }
+  }
+
+  /* 10. <Predict> 가 예제 바로 앞에 있으면 그 예제의 기대 출력과 같아야 한다.
+     예제를 고치고 예상 답을 안 고치면 「실제로 실행해 확인한 값」과 어긋난 답을
+     학생에게 정답이라고 보여 주게 된다 (CLAUDE.md 6장 10번의 취지). */
+  for (const m of 본문.matchAll(
+    /<Predict\b([\s\S]*?)\/>\s*<CodeSample\b([^>]*?)>/g
+  )) {
+    const 답 = /answer=\{?"((?:[^"\\]|\\.)*)"\}?/.exec(m[1])?.[1];
+    const 기대 = /expect=\{?"((?:[^"\\]|\\.)*)"\}?/.exec(m[2])?.[1];
+    if (답 === undefined || 기대 === undefined) continue;
+    const 풀기 = (s) => s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').trim();
+    /* part — 출력 전체가 아니라 «값 하나»를 예상하게 할 때(3단원: 「고장」이 몇 번?).
+       그때도 답이 출력 안에 «낱말 하나로» 들어 있어야 한다 — 7 이 17 의 일부로 맞으면 안 된다. */
+    if (/\bpart\b/.test(m[1])) {
+      const 답글 = 풀기(답).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!new RegExp(`(^|[\\s:(])${답글}($|[\\s:),.])`, 'm').test(풀기(기대))) {
+        오류.push(`${rel}: <Predict part> 의 answer ${JSON.stringify(풀기(답))} 가 바로 뒤 예제의 출력에 없다`);
+      }
+      continue;
+    }
+    if (풀기(답) !== 풀기(기대)) {
+      오류.push(
+        `${rel}: <Predict> 의 answer 가 바로 뒤 <CodeSample> 의 expect 와 다르다\n` +
+          `        예상: ${JSON.stringify(풀기(답))}\n` +
+          `        예제: ${JSON.stringify(풀기(기대))}`
+      );
+    }
+  }
+
+  /* 10-2. 활동지 id 는 저장 열쇠다. 두 차시가 같은 id 를 쓰면 한쪽에 적은 내용이 다른 쪽을 덮는다 */
+  for (const m of 본문.matchAll(/<(?:Worksheet|BoardSim|CleanLab|StatLab|ChartLab|DeidLab|StationSim|QueueSim|MonteCarloPi|SirSim|PersonaMaker|LeanCanvas|ProtoBuilder|TaskBoard|ValueReview)[^>]*?id=["']([^"']+)["']/g)) {
+    if (활동지id.has(m[1])) {
+      오류.push(`${rel}: 활동지 id="${m[1]}" 가 ${활동지id.get(m[1])} 에도 있다 — 저장 내용이 서로 덮인다`);
+    } else 활동지id.set(m[1], rel);
+  }
+
+  /* 11. 문체 — 오류가 아니라 경고다. 인용문에서 걸릴 수 있어 사람이 판단한다 */
+  for (const { re, 이름 } of 문체금지) {
+    const 걸린것 = [...본문.matchAll(re)].map((m) => m[0].trim());
+    if (걸린것.length > 0) {
+      const 보기 = [...new Set(걸린것)].slice(0, 4).join(', ');
+      경고.push(`${rel}: ${이름} 표현 ${걸린것.length}건 — ${보기}`);
+    }
+  }
+
+  if (오류.length === 앞) 통과++;
+}
+
+/* ---------- 집필 진행률 ---------- */
+const 집필된차시 = new Set();
+for (const p of 파일들) {
+  const u = Number(basename(dirname(p)));
+  const l = Number(basename(p).replace(/\.mdx?$/, ''));
+  집필된차시.add(`${u}-${l}`);
+}
+const 단원별 = (data.단원 ?? []).map((u) => {
+  const 전체 = (u.차시 ?? []).length;
+  const 있음 = (u.차시 ?? []).filter((l) => 집필된차시.has(`${u.단원번호}-${l.차시번호}`)).length;
+  return { no: u.단원번호, 이름: u.단원명, 전체, 있음 };
+});
+
+/* ---------- 출력 ---------- */
+console.log(bold(`\n차시 본문 검사 — ${파일들.length}개 파일`));
+
+if (opts.todoOnly) {
+  if (확인필요.length === 0) console.log(green(`  본문에 ${TODO} 없음`));
+  else {
+    console.log(yellow(`  ${TODO} ${확인필요.length}건`));
+    for (const t of 확인필요) console.log(dim(`    ${t}`));
+  }
+  process.exit(0);
+}
+
+for (const w of 경고) console.log(`  ${yellow('경고')}  ${w}`);
+for (const e of 오류) console.log(`  ${red('오류')}  ${e}`);
+for (const t of 확인필요) console.log(`  ${yellow(TODO)}  ${t}`);
+
+console.log(dim('\n  집필 진행률'));
+for (const u of 단원별) {
+  const 표시 = `${u.있음}/${u.전체}`;
+  const 색 = u.있음 === u.전체 ? green : u.있음 === 0 ? dim : yellow;
+  console.log(dim(`    ${u.no}단원 ${u.이름} — `) + 색(표시));
+}
+
+console.log(
+  `\n${오류.length === 0 ? green('통과') : red('실패')} — 파일 ${통과}개 통과, 오류 ${오류.length}건, 경고 ${경고.length}건, ${TODO} ${확인필요.length}건`
+);
+process.exit(오류.length === 0 ? 0 : 1);

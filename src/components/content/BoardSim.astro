@@ -1,0 +1,772 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 가상 보드 — 마이크로비트 v2 · 아두이노 우노
+ *
+ * 고시문 「피지컬 컴퓨팅 도구를 활용하기 어려운 경우 소프트웨어 기반의 가상 시뮬레이터를
+ * 활용하여」 + 「특정 디지털 기기에 의존하지 않는 학습 환경」 을 그대로 만든 것이다.
+ * 같은 규칙을 두 보드에 올려 볼 수 있어 「어느 보드가 이 아이디어에 맞는가」를 직접 겪는다.
+ *
+ *   센서 패널(슬라이더·누르는 단추) → 규칙(만약 ~이면 ~, 아니면 ~) → 출력(LED·스피커·서보·네오픽셀)
+ *   + 같은 규칙을 진짜 보드용 코드(MicroPython / Arduino C++)로 보여 준다.
+ *
+ * MDX 사용법
+ *   <BoardSim id="u2-l1-first" board="microbit" />                    자유 실험
+ *   <BoardSim id="u2-l4-street" mission="streetlight" board="arduino" />  미션 (src/lib/boardsim.js 의 미션 열쇠)
+ *   <BoardSim id="…" rules={[{ when: { sensor: 'btnA', op: 'pressed' }, then: { out: 'display', act: 'icon', arg: 'HEART' } }]} />
+ *
+ * 계산·코드 생성·채점은 모두 src/lib/boardsim.js 에 있고 tools/check-boardsim.mjs 가 시험한다.
+ * 이 파일은 화면만 그린다.
+ */
+import { 미션 } from '@lib/boardsim.js';
+
+interface Props {
+  id: string;
+  board?: 'microbit' | 'arduino';
+  mission?: string;
+  /** 처음에 깔아 둘 규칙 (엔진 형식) */
+  rules?: unknown[];
+  /** 보드 바꾸기 단추를 숨긴다 */
+  fixed?: boolean;
+  title?: string;
+}
+const { id, board = 'microbit', mission, rules = [], fixed = false, title } = Astro.props;
+if (mission && !미션[mission as keyof typeof 미션]) throw new Error(`BoardSim: 없는 미션 열쇠 ${mission}`);
+const m = mission ? 미션[mission as keyof typeof 미션] : null;
+---
+
+<section
+  class="bs"
+  data-boardsim={id}
+  data-board={board}
+  data-mission={mission ?? ''}
+  data-rules={JSON.stringify(rules)}
+  data-fixed={fixed ? '1' : ''}
+>
+  <header class="bs__head">
+    <span class="bs__label">가상 보드</span>
+    <h4 class="bs__title">{title ?? (m ? `미션 — ${m.제목}` : '자유 실험')}</h4>
+    <div class="bs__boards" role="group" aria-label="보드 고르기" data-board-btns></div>
+  </header>
+
+  {
+    m && (
+      <div class="bs__mission">
+        <p>{m.설명}</p>
+        <button type="button" class="bs__btn bs__btn--main" data-check>미션 확인</button>
+        <ul class="bs__result" data-result aria-live="polite" />
+      </div>
+    )
+  }
+
+  <noscript><p class="bs__noscript">가상 보드는 자바스크립트가 켜져 있어야 움직인다.</p></noscript>
+
+  <div class="bs__grid">
+    <div class="bs__panel">
+      <h5>보드와 출력</h5>
+      <div class="bs__board" data-boardview></div>
+      <div class="bs__outs" data-outs></div>
+      <label class="bs__audio"><input type="checkbox" data-audio /> 🔈 실제 소리 켜기</label>
+    </div>
+    <div class="bs__panel">
+      <h5>센서 — 값을 바꿔 보자</h5>
+      <div class="bs__sensors" data-sensors></div>
+    </div>
+  </div>
+
+  <div class="bs__rules">
+    <h5>규칙 — 위에서부터 차례로, 쉬지 않고 되풀이한다</h5>
+    <ol data-rules-list></ol>
+    <button type="button" class="bs__btn" data-add>＋ 규칙 더하기</button>
+  </div>
+
+  <details class="bs__code">
+    <summary>진짜 보드에 올릴 코드 보기 — <span data-lang></span></summary>
+    <div class="bs__wires" data-wires></div>
+    <pre><code data-code></code></pre>
+    <button type="button" class="bs__btn" data-copy>코드 복사</button>
+    <p class="bs__fine" data-where></p>
+  </details>
+</section>
+
+<script>
+  import {
+    보드, 아이콘, 색, 음, 미션, 동작목록, 동작열쇠, 열쇠로동작, 처음출력, 처음센서값,
+    한박자, 규칙점검, 미션채점, 코드만들기,
+  } from '../../lib/boardsim.js';
+
+  type 규칙UI = { sensor: string; op: string; value: number; then: string; else: string };
+
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...kids: (Node | string)[]) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') e.className = v;
+      else e.setAttribute(k, v);
+    }
+    e.append(...kids);
+    return e;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-boardsim]')) {
+    const 열쇠 = 'swlife-sim:' + root.dataset.boardsim;
+    const 미션열쇠 = root.dataset.mission || '';
+    const 이미션 = 미션열쇠 ? (미션 as any)[미션열쇠] : null;
+    let 보드id: string = root.dataset.board || 'microbit';
+    let 규칙: 규칙UI[] = [];
+
+    /* 엔진 형식 ↔ 화면 형식 */
+    const 엔진으로 = (r: 규칙UI) => ({
+      when: r.sensor ? { sensor: r.sensor, op: r.op, value: Number(r.value) } : null,
+      then: 열쇠로동작(보드id, r.then),
+      else: 열쇠로동작(보드id, r.else),
+    });
+    const 화면으로 = (r: any): 규칙UI => ({
+      sensor: r.when?.sensor ?? '',
+      op: r.when?.op ?? '<',
+      value: r.when?.value ?? 0,
+      then: 동작열쇠(r.then),
+      else: 동작열쇠(r.else),
+    });
+
+    /* 불러오기: 저장된 것 → 차시가 깔아 둔 규칙 → 빈 규칙 하나 */
+    try {
+      const s = JSON.parse(localStorage.getItem(열쇠) || 'null');
+      if (s) {
+        보드id = s.board;
+        규칙 = s.rules;
+      }
+    } catch {}
+    if (!규칙.length) {
+      const 처음 = JSON.parse(root.dataset.rules || '[]');
+      규칙 = 처음.length ? 처음.map(화면으로) : [];
+    }
+    if (!규칙.length && 이미션) 규칙 = [{ sensor: '', op: '<', value: 0, then: '', else: '' }];
+
+    const 저장 = () => {
+      try {
+        localStorage.setItem(열쇠, JSON.stringify({ board: 보드id, rules: 규칙 }));
+      } catch {}
+    };
+
+    let 센서값: Record<string, any> = 처음센서값(보드id);
+    let 출력 = 처음출력();
+
+    /* ---------- 보드 단추 ---------- */
+    const 보드단추 = root.querySelector<HTMLElement>('[data-board-btns]')!;
+    for (const [k, b] of Object.entries(보드)) {
+      const 단추 = el('button', { type: 'button', 'data-b': k }, b.이름);
+      단추.addEventListener('click', () => {
+        보드id = k;
+        센서값 = 처음센서값(k);
+        출력 = 처음출력();
+        저장();
+        전부그리기();
+      });
+      보드단추.append(단추);
+    }
+    if (root.dataset.fixed) 보드단추.hidden = true;
+
+    /* ---------- 센서 패널 ---------- */
+    function 센서그리기() {
+      const box = root.querySelector<HTMLElement>('[data-sensors]')!;
+      box.replaceChildren();
+      for (const [k, s] of Object.entries((보드 as any)[보드id].센서) as [string, any][]) {
+        const 줄 = el('div', { class: 'bs__sensor' });
+        const 이름 = el('span', { class: 'bs__sname' }, s.이름, el('small', {}, s.부품));
+        if (s.kind === 'button') {
+          const b = el('button', { type: 'button', class: 'bs__press' }, '꾹 누르기');
+          const 놓기 = () => {
+            센서값[k] = false;
+            b.classList.remove('is-down');
+          };
+          b.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            센서값[k] = true;
+            b.classList.add('is-down');
+          });
+          b.addEventListener('pointerup', 놓기);
+          b.addEventListener('pointerleave', 놓기);
+          b.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              센서값[k] = true;
+              b.classList.add('is-down');
+            }
+          });
+          b.addEventListener('keyup', 놓기);
+          줄.append(이름, b);
+        } else {
+          const 값 = el('output', {}, `${센서값[k]}${s.단위}`);
+          const r = el('input', { type: 'range', min: String(s.min), max: String(s.max), value: String(센서값[k]), 'aria-label': s.이름 }) as HTMLInputElement;
+          r.addEventListener('input', () => {
+            센서값[k] = Number(r.value);
+            값.textContent = `${r.value}${s.단위}`;
+          });
+          const 범위 = el('small', { class: 'bs__range' }, `${s.min} ~ ${s.max}${s.단위}`);
+          줄.append(이름, r, 값, 범위);
+        }
+        box.append(줄);
+      }
+    }
+
+    /* ---------- 보드 모습과 출력 ---------- */
+    let 오디오: AudioContext | null = null;
+    let 발진기: OscillatorNode | null = null;
+    function 소리(hz: number) {
+      const 켬 = root.querySelector<HTMLInputElement>('[data-audio]')!.checked;
+      if (!켬 || !hz) {
+        발진기?.stop();
+        발진기 = null;
+        return;
+      }
+      if (!오디오) 오디오 = new AudioContext();
+      if (!발진기) {
+        const g = 오디오.createGain();
+        g.gain.value = 0.05;
+        g.connect(오디오.destination);
+        발진기 = 오디오.createOscillator();
+        발진기.type = 'square';
+        발진기.connect(g);
+        발진기.start();
+      }
+      발진기.frequency.setTargetAtTime(hz, 오디오.currentTime, 0.02);
+    }
+
+    function 보드그리기() {
+      const v = root.querySelector<HTMLElement>('[data-boardview]')!;
+      v.replaceChildren();
+      v.dataset.kind = 보드id;
+      if (보드id === 'microbit') {
+        const 화면 = el('div', { class: 'bs__matrix', 'data-matrix': '' });
+        for (let i = 0; i < 25; i++) 화면.append(el('span'));
+        v.append(el('span', { class: 'bs__bname' }, 'micro:bit'), 화면);
+      } else {
+        v.append(el('span', { class: 'bs__bname' }, 'UNO'), el('span', { class: 'bs__led13', 'data-led': '' }, ''), el('small', {}, '13번 핀 LED'));
+      }
+      const outs = root.querySelector<HTMLElement>('[data-outs]')!;
+      outs.replaceChildren(
+        el('div', { class: 'bs__out' }, el('span', { class: 'bs__oname' }, (보드 as any)[보드id].출력.sound.이름), el('span', { 'data-o-sound': '' }, '조용함')),
+        el('div', { class: 'bs__out' }, el('span', { class: 'bs__oname' }, '서보 모터'),
+          (() => {
+            const ns = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('viewBox', '0 0 100 56');
+            svg.setAttribute('class', 'bs__servo');
+            svg.innerHTML = '<path d="M8,50 A42,42 0 0 1 92,50" fill="none" stroke="#cbd5e1" stroke-width="6"/><line data-needle x1="50" y1="50" x2="50" y2="12" stroke="#b4492b" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="50" r="5" fill="#334155"/>';
+            return svg;
+          })(),
+          el('span', { 'data-o-servo': '' }, '90도')),
+        el('div', { class: 'bs__out' }, el('span', { class: 'bs__oname' }, '네오픽셀'), (() => {
+          const strip = el('span', { class: 'bs__strip', 'data-strip': '' });
+          for (let i = 0; i < 8; i++) strip.append(el('i'));
+          return strip;
+        })()),
+      );
+    }
+
+    function 출력그리기() {
+      const 행렬 = root.querySelector<HTMLElement>('[data-matrix]');
+      if (행렬) {
+        const 점 = 출력.display ? (아이콘 as any)[출력.display].점.join('') : '0'.repeat(25);
+        [...행렬.children].forEach((c, i) => c.classList.toggle('on', 점[i] === '1'));
+      }
+      root.querySelector('[data-led]')?.classList.toggle('on', 출력.led);
+      const hz = 출력.sound;
+      root.querySelector('[data-o-sound]')!.textContent = hz ? `♪ ${(음 as any)[hz] ?? ''} ${hz}Hz` : '조용함';
+      root.querySelector('[data-o-sound]')!.classList.toggle('is-on', !!hz);
+      root.querySelector<SVGLineElement>('[data-needle]')!.setAttribute('transform', `rotate(${출력.servo - 90} 50 50)`);
+      root.querySelector('[data-o-servo]')!.textContent = `${출력.servo}도`;
+      const rgb = 출력.pixel ? (색 as any)[출력.pixel].rgb : null;
+      for (const p of root.querySelectorAll<HTMLElement>('[data-strip] i')) {
+        p.style.background = rgb ? `rgb(${rgb.join(',')})` : '';
+        p.style.setProperty('--glow', rgb ? `rgb(${rgb.join(',')})` : 'transparent');
+        p.classList.toggle('on', !!rgb);
+      }
+      소리(hz);
+    }
+
+    /* ---------- 규칙 편집 ---------- */
+    function 규칙그리기() {
+      const 목록 = root.querySelector<HTMLElement>('[data-rules-list]')!;
+      목록.replaceChildren();
+      const 센서들 = Object.entries((보드 as any)[보드id].센서) as [string, any][];
+      const 동작들 = 동작목록(보드id);
+      규칙.forEach((r, i) => {
+        const 카드 = el('li', { class: 'bs__rule' });
+        /* 세 줄로 나눈다 — 1줄: 조건 / 2줄: 그러면 / 3줄: 아니면. 한 줄에 몰면 칸이 아무 데서나 꺾여 읽기 어렵다 */
+        const 줄1 = el('div', { class: 'bs__line' });
+        const 줄2 = el('div', { class: 'bs__line bs__line--act' });
+        const 줄3 = el('div', { class: 'bs__line bs__line--act' });
+        const 바뀜 = () => {
+          저장();
+          규칙그리기();
+          코드그리기();
+        };
+
+        const 조건 = el('select', { 'aria-label': `규칙 ${i + 1} 조건 센서` }) as HTMLSelectElement;
+        조건.append(el('option', { value: '' }, '항상 (조건 없이)'));
+        for (const [k, s] of 센서들) 조건.append(el('option', { value: k }, `만약 ${s.이름}`));
+        if (r.sensor && !센서들.some(([k]) => k === r.sensor)) 조건.append(el('option', { value: r.sensor }, `(이 보드에 없는 센서)`));
+        조건.value = r.sensor;
+        조건.addEventListener('change', () => {
+          r.sensor = 조건.value;
+          const s = (보드 as any)[보드id].센서[r.sensor];
+          if (s) {
+            r.op = s.kind === 'button' ? 'pressed' : '<';
+            r.value = s.kind === 'button' ? 0 : Math.round((s.min + s.max) / 2);
+          }
+          바뀜();
+        });
+        줄1.append(el('span', { class: 'bs__no' }, String(i + 1)), 조건);
+
+        const s = (보드 as any)[보드id].센서[r.sensor];
+        if (s) {
+          /* 「만약 빛 [60] 보다 작으면」 차례로 읽히게 값을 비교 앞에 둔다 — 「이(가)」 같은 조사를 피하려는 차례다 */
+          if (s.kind === 'range') {
+            const 값 = el('input', { type: 'number', step: '1', value: String(r.value), 'aria-label': '비교할 값', class: 'bs__num' }) as HTMLInputElement;
+            값.addEventListener('change', () => {
+              r.value = Number(값.value);
+              바뀜();
+            });
+            줄1.append(값, el('small', { class: 'bs__unit' }, s.단위 || ''));
+          }
+          const 비교 = el('select', { 'aria-label': '비교' }) as HTMLSelectElement;
+          const 꼴 = s.kind === 'button' ? [['pressed', '눌렸으면'], ['notpressed', '안 눌렸으면']] : [['<', '보다 작으면'], ['>', '보다 크면']];
+          for (const [v, t] of 꼴) 비교.append(el('option', { value: v }, t));
+          비교.value = r.op;
+          비교.addEventListener('change', () => {
+            r.op = 비교.value;
+            바뀜();
+          });
+          줄1.append(비교);
+        }
+
+        const 동작고르기 = (현재: string, 빈글: string, 이름: string, 놓기: (v: string) => void) => {
+          const sel = el('select', { 'aria-label': 이름 }) as HTMLSelectElement;
+          sel.append(el('option', { value: '' }, 빈글));
+          for (const a of 동작들) sel.append(el('option', { value: 동작열쇠(a) }, a.글));
+          if (현재 && !동작들.some((a) => 동작열쇠(a) === 현재)) sel.append(el('option', { value: 현재 }, '(이 보드에서 못 하는 동작)'));
+          sel.value = 현재;
+          sel.addEventListener('change', () => {
+            놓기(sel.value);
+            바뀜();
+          });
+          return sel;
+        };
+        줄2.append(el('span', { class: 'bs__then' }, r.sensor ? '그러면' : '할 일'), 동작고르기(r.then, '— 동작 고르기 —', '그러면 할 동작', (v) => (r.then = v)));
+        if (r.sensor) 줄3.append(el('span', { class: 'bs__then bs__then--else' }, '아니면'), 동작고르기(r.else, '(아무것도 안 함)', '아니면 할 동작', (v) => (r.else = v)));
+
+        const 위 = el('button', { type: 'button', class: 'bs__mini', 'aria-label': '위로' }, '▲');
+        위.addEventListener('click', () => {
+          if (i > 0) [규칙[i - 1], 규칙[i]] = [규칙[i], 규칙[i - 1]];
+          바뀜();
+        });
+        const 지움 = el('button', { type: 'button', class: 'bs__mini', 'aria-label': '규칙 지우기' }, '✕');
+        지움.addEventListener('click', () => {
+          규칙.splice(i, 1);
+          바뀜();
+        });
+        줄1.append(el('span', { class: 'bs__tools' }, 위, 지움));
+        카드.append(줄1, 줄2);
+        if (r.sensor) 카드.append(줄3);
+
+        const 문제 = 규칙점검(보드id, 엔진으로(r));
+        if (문제) 카드.append(el('p', { class: 'bs__warn' }, `⚠ ${문제} — 이 규칙은 실행되지 않는다`));
+        목록.append(카드);
+      });
+    }
+    root.querySelector('[data-add]')!.addEventListener('click', () => {
+      규칙.push({ sensor: '', op: '<', value: 0, then: '', else: '' });
+      저장();
+      규칙그리기();
+      코드그리기();
+    });
+
+    /* ---------- 코드 ---------- */
+    function 코드그리기() {
+      const b = (보드 as any)[보드id];
+      root.querySelector('[data-lang]')!.textContent = b.언어;
+      const 엔진규칙 = 규칙.map(엔진으로);
+      root.querySelector('[data-code]')!.textContent = 코드만들기(보드id, 엔진규칙);
+      /* 연결할 부품 — 실제로 만들 때 필요한 배선 목록 */
+      const 쓰는센서 = new Set<string>();
+      const 쓰는출력 = new Set<string>();
+      for (const r of 엔진규칙) {
+        if (규칙점검(보드id, r)) continue;
+        if (r.when) 쓰는센서.add(r.when.sensor);
+        for (const a of [r.then, r.else]) if (a) {
+          쓰는출력.add(a.out);
+          if (a.act === 'follow') 쓰는센서.add(a.arg);
+        }
+      }
+      const 줄 = [...[...쓰는센서].map((k) => `${b.센서[k].이름} — ${b.센서[k].부품}`), ...[...쓰는출력].map((k) => `${b.출력[k].이름} — ${b.출력[k].부품}`)];
+      root.querySelector('[data-wires]')!.textContent = 줄.length ? `연결할 부품: ${줄.join(' · ')}` : '';
+      root.querySelector('[data-where]')!.textContent =
+        보드id === 'microbit'
+          ? '마이크로비트 파이썬 편집기(python.microbit.org)에 붙여 넣고 보드로 보낸다.'
+          : '아두이노 IDE 에 붙여 넣고 업로드한다. 네오픽셀을 쓰면 Adafruit NeoPixel 라이브러리를 먼저 설치한다.';
+    }
+    root.querySelector('[data-copy]')!.addEventListener('click', async (e) => {
+      const b = e.currentTarget as HTMLButtonElement;
+      try {
+        await navigator.clipboard.writeText(root.querySelector('[data-code]')!.textContent || '');
+        b.textContent = '복사했다 ✓';
+      } catch {
+        b.textContent = '복사가 막혀 있다 — 직접 골라 복사하자';
+      }
+      setTimeout(() => (b.textContent = '코드 복사'), 2000);
+    });
+
+    /* ---------- 미션 ---------- */
+    root.querySelector('[data-check]')?.addEventListener('click', () => {
+      const 결과 = 미션채점(보드id, 규칙.map(엔진으로), 이미션);
+      const ul = root.querySelector<HTMLElement>('[data-result]')!;
+      ul.replaceChildren(
+        el('li', { class: 'sum' }, 결과.통과 ? `🎉 미션 성공! (${(보드 as any)[보드id].이름})` : '아직이다. ✗ 표시된 상황을 센서 패널에서 직접 만들어 보고 출력을 살펴보자.'),
+        ...결과.결과.map((x: any) => el('li', { class: x.ok ? 'ok' : 'no' }, `${x.ok ? '✓' : '✗'} ${x.글}`)),
+      );
+    });
+
+    /* ---------- 돌리기 ---------- */
+    function 전부그리기() {
+      for (const b of 보드단추.querySelectorAll<HTMLElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.b === 보드id));
+      root.dataset.board = 보드id;
+      센서그리기();
+      보드그리기();
+      규칙그리기();
+      코드그리기();
+      출력그리기();
+    }
+    전부그리기();
+
+    /* 10번/초 — 실제 코드의 sleep(100)·delay(100) 과 같은 빠르기.
+       화면 밖에 있으면 돌지 않는다(여러 개가 있는 차시에서 쓸데없이 돌지 않게). */
+    let 보임 = false;
+    new IntersectionObserver((es) => {
+      보임 = es[0].isIntersecting;
+      if (!보임) 소리(0);
+    }).observe(root);
+    setInterval(() => {
+      if (!보임) return;
+      출력 = 한박자(보드id, 규칙.map(엔진으로), 센서값, 출력);
+      출력그리기();
+    }, 100);
+    root.querySelector('[data-audio]')!.addEventListener('change', () => 소리(출력.sound));
+  }
+</script>
+
+<style>
+  .bs {
+    margin: var(--space-6) 0;
+    border: 2px solid #334155;
+    border-radius: var(--radius);
+    background: var(--c-surface);
+    overflow: hidden;
+  }
+  .bs__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    padding: 11px var(--space-4);
+    background: #1e293b;
+    color: #fff;
+  }
+  .bs__label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    background: #f59e0b;
+    color: #1e293b;
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+  }
+  .bs__title {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #fff;
+  }
+  .bs__boards {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+  .bs__boards :global(button) {
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: var(--radius-pill);
+    border: 1.5px solid #64748b;
+    background: transparent;
+    color: #e2e8f0;
+    cursor: pointer;
+  }
+  .bs__boards :global(button[aria-pressed='true']) {
+    background: #f59e0b;
+    border-color: #f59e0b;
+    color: #1e293b;
+  }
+  .bs__mission {
+    padding: var(--space-3) var(--space-4);
+    background: #fffbeb;
+    border-bottom: 1px solid #fde68a;
+  }
+  .bs__mission p {
+    margin: 0 0 var(--space-2);
+    font-weight: 600;
+  }
+  .bs__result {
+    list-style: none;
+    padding: 0;
+    margin: var(--space-2) 0 0;
+  }
+  .bs__result :global(li) {
+    padding: 4px 10px;
+    margin: 3px 0;
+    border-radius: var(--radius-sm);
+  }
+  .bs__result :global(.ok) { background: var(--ok-soft); }
+  .bs__result :global(.no) { background: var(--bad-soft); }
+  .bs__result :global(.sum) { font-weight: 800; padding-left: 0; }
+  .bs__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  @media (max-width: 680px) {
+    .bs__grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  .bs__panel {
+    background: var(--c-surface-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    min-width: 0;
+  }
+  .bs h5 {
+    margin: 0 0 var(--space-2);
+    font-size: 0.95rem;
+  }
+  .bs__board {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: 12px;
+    color: #fff;
+    margin-bottom: var(--space-3);
+  }
+  .bs__board[data-kind='microbit'] { background: #111827; }
+  .bs__board[data-kind='arduino'] { background: #0e7490; }
+  .bs__board :global(.bs__bname) {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.9rem;
+    opacity: 0.85;
+  }
+  .bs__board :global(.bs__matrix) {
+    display: grid;
+    grid-template-columns: repeat(5, 18px);
+    gap: 6px;
+  }
+  .bs__board :global(.bs__matrix span) {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: #3f1d1d;
+  }
+  .bs__board :global(.bs__matrix span.on) {
+    background: #ef4444;
+    box-shadow: 0 0 10px #ef4444;
+  }
+  .bs__board :global(.bs__led13) {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #164e63;
+    border: 2px solid #67e8f9;
+  }
+  .bs__board :global(.bs__led13.on) {
+    background: #fde047;
+    box-shadow: 0 0 14px #fde047;
+  }
+  .bs__outs {
+    display: grid;
+    gap: var(--space-2);
+  }
+  .bs__outs :global(.bs__out) {
+    display: grid;
+    grid-template-columns: 84px 1fr auto;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.92rem;
+  }
+  .bs__outs :global(.bs__oname) { font-weight: 700; }
+  .bs__outs :global(.is-on) { color: var(--c-primary); font-weight: 800; }
+  .bs__outs :global(.bs__servo) { width: 80px; height: 45px; }
+  /* 꺼진 칸은 어두운 회색, 켜진 칸은 그 색으로 빛난다 — 밝은 바탕이면 「흰색으로 켜짐」과 「꺼짐」이 구별되지 않았다 */
+  .bs__outs :global(.bs__strip) {
+    display: flex;
+    gap: 5px;
+    padding: 5px 8px;
+    border-radius: var(--radius-pill);
+    background: #1e293b;
+    width: max-content;
+  }
+  .bs__outs :global(.bs__strip i) {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3f4a5c;
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .bs__outs :global(.bs__strip i.on) { box-shadow: 0 0 8px 2px var(--glow); }
+  .bs__audio {
+    display: block;
+    margin-top: var(--space-2);
+    font-size: 0.85rem;
+    color: var(--c-text-soft);
+  }
+  .bs__sensors :global(.bs__sensor) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 56px;
+    gap: var(--space-2);
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--c-border);
+  }
+  .bs__sensors :global(.bs__sname) { font-weight: 700; font-size: 0.92rem; }
+  .bs__sensors :global(.bs__sname small) {
+    display: block;
+    font-weight: 400;
+    font-size: 0.74rem;
+    color: var(--c-text-faint);
+  }
+  .bs__sensors :global(input[type='range']) { width: 100%; min-width: 0; }
+  .bs__sensors :global(output) { font-family: var(--font-mono); font-weight: 800; text-align: right; }
+  .bs__sensors :global(.bs__range) {
+    grid-column: 2 / 4;
+    font-size: 0.74rem;
+    color: var(--c-text-faint);
+    margin-top: -6px;
+  }
+  .bs__sensors :global(.bs__press) {
+    grid-column: 2 / 4;
+    font: inherit;
+    font-weight: 700;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 2px solid #334155;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+  }
+  .bs__sensors :global(.bs__press.is-down) { background: #334155; color: #fff; }
+  .bs__rules {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+  .bs__rules ol {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--space-2);
+  }
+  .bs__rules :global(.bs__rule) {
+    display: grid;
+    /* minmax(0,…) — 고르기 상자의 긴 글이 카드를 밀어 화면 밖으로 넘치지 않게 (375px 에서 실제로 넘쳤다) */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: 6px;
+    background: var(--c-primary-soft);
+    border-radius: var(--radius-sm);
+  }
+  .bs__rules :global(select),
+  .bs__rules :global(.bs__num) {
+    font: inherit;
+    font-size: 0.92rem;
+    padding: 5px 6px;
+    border: 1.5px solid var(--c-border-strong);
+    border-radius: 7px;
+    background: #fff;
+    max-width: 100%;
+  }
+  .bs__rules :global(.bs__num) { width: 84px; }
+  .bs__rules :global(.bs__no) {
+    font-weight: 800;
+    background: var(--c-primary);
+    color: #fff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: inline-grid;
+    place-items: center;
+    font-size: 0.8rem;
+  }
+  .bs__rules :global(.bs__line) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .bs__rules :global(.bs__line--act) { padding-left: 30px; flex-wrap: nowrap; }
+  .bs__rules :global(.bs__line select) { min-width: 0; max-width: 100%; }
+  @media (max-width: 560px) {
+    .bs__rules :global(.bs__line--act) { padding-left: 0; }
+  }
+  .bs__rules :global(.bs__line--act select) { flex: 1; min-width: 0; }
+  .bs__rules :global(.bs__then) {
+    flex: none;
+    width: 52px;
+    font-weight: 800;
+    color: var(--c-primary-deep);
+    font-size: 0.9rem;
+  }
+  .bs__rules :global(.bs__then--else) { color: var(--c-text-soft); }
+  .bs__rules :global(.bs__tools) { margin-left: auto; display: flex; gap: 4px; }
+  .bs__rules :global(.bs__mini) {
+    border: 0;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .bs__rules :global(.bs__warn) {
+    margin: 2px 0 0;
+    color: var(--bad);
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+  .bs__btn {
+    font: inherit;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--c-border-strong);
+    background: #fff;
+    cursor: pointer;
+  }
+  .bs__btn--main { background: #1e293b; border-color: #1e293b; color: #fff; }
+  .bs__code {
+    margin: 0 var(--space-4) var(--space-4);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+  }
+  .bs__code summary { cursor: pointer; font-weight: 700; }
+  .bs__code pre {
+    background: var(--c-code-bg);
+    color: var(--c-code-text);
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-size: 0.86rem;
+    line-height: 1.55;
+  }
+  .bs__wires { margin-top: var(--space-2); font-size: 0.88rem; font-weight: 600; }
+  .bs__fine { font-size: 0.82rem; color: var(--c-text-faint); }
+  .bs__noscript { padding: var(--space-4); }
+  @media print {
+    .bs__grid, .bs__audio, .bs__boards, [data-add], [data-copy] { display: none; }
+    .bs__code { display: block; }
+  }
+</style>

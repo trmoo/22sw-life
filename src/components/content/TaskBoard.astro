@@ -1,0 +1,195 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 작업 보드 (Ⅴ-5·6) — 역할 나누기 + 할 일 카드 (할 일 → 하는 중 → 다 함)
+ *
+ * 고시문 고려 사항: 「프로젝트 계획 단계에서 구성원의 임무와 역할을 명확히 분담」.
+ * 그래서 위에서 팀원마다 역할을 고르고, 아래에서 할 일 카드마다 담당을 정한다.
+ * 점검(보드점검)은 빈 역할 · 역할 없는 팀원 · 담당 없는 카드 · 한 사람에게 몰린 일을 찾는다.
+ * 팀원은 이름 대신 별명·번호로 적는다(개인정보를 받지 않는다).
+ * 끌어 옮기기 대신 ◀ ▶ 단추로 옮긴다 — 전자칠판·키보드에서도 똑같이 되게.
+ *
+ * MDX 사용법
+ *   <TaskBoard id="u5-l5-board" />
+ *   <TaskBoard id="u5-l6-board" store="u5-l5-board" />   ← 6차시에서 같은 보드를 이어 쓴다
+ */
+interface Props {
+  id: string;
+  store?: string;
+}
+const { id, store } = Astro.props;
+---
+
+<section class="lab pj" data-board={id} data-store={store ?? id}>
+  <header class="lab__head">
+    <span class="lab__badge">작업 보드</span>
+    <span class="lab__title">누가 무엇을 맡나</span>
+  </header>
+
+  <p class="pj__how"><strong>① 팀원과 역할</strong> — 이름 대신 별명이나 번호로 적는다. 한 사람이 역할을 둘 맡아도 된다.</p>
+  <div class="pj-team" data-team></div>
+  <button type="button" class="lab__btn lab__btn--ghost" data-act="addperson">＋ 팀원 더하기</button>
+
+  <p class="pj__how" style="margin-top:var(--space-5)"><strong>② 할 일 카드</strong> — 한 장에 한 가지 일. 끝낼 수 있을 만큼 작게 쪼갠다.</p>
+  <div class="pj-add">
+    <input type="text" data-new maxlength="60" placeholder="예: 검색 기능 시험표 만들기" aria-label="새 할 일" />
+    <select data-new-who aria-label="담당"></select>
+    <button type="button" class="lab__btn" data-act="addcard">카드 더하기</button>
+  </div>
+  <div data-progress></div>
+  <div class="pj-cols" data-cols></div>
+
+  <div class="pj__checks" data-checks></div>
+  <div class="pj__actions">
+    <button type="button" class="lab__btn" data-act="download">⬇ 내려받기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="print">🖨 인쇄</button>
+    <button type="button" class="lab__btn lab__btn--ghost pj__quiet" data-act="clear">모두 지우기</button>
+  </div>
+  <p class="pj__note" data-saved>보드는 이 브라우저에만 저장된다. 팀원과 나누려면 내려받는다.</p>
+</section>
+
+<script>
+  import { 역할들, 보드칸, 새보드, 보드점검, 보드진행, 이스케이프, 읽기, 쓰기, 기록HTML, 점검목록HTML } from '@lib/projtools.js';
+  import { 두번확인, 내려받기, 점검그리기 } from '@lib/pjui';
+
+  type 보드 = { 사람: { 별명: string; 역할: string[] }[]; 카드: { 글: string; 담당: string; 칸: number }[] };
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-board]')) {
+    const 열쇠 = 'swlife-board:' + root.dataset.store;
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    let b: 보드 = 읽기(열쇠) ?? 새보드();
+
+    const 별명들 = () => b.사람.map((x) => x.별명.trim()).filter(Boolean);
+    const 담당선택 = (지금: string) =>
+      `<option value="">담당 없음</option>${별명들().map((n) => `<option${n === 지금 ? ' selected' : ''}>${이스케이프(n)}</option>`).join('')}`;
+
+    function 저장() {
+      $('[data-saved]').textContent = 쓰기(열쇠, b)
+        ? '저장됨 ✓ — 이 브라우저에만 남는다. 팀원과 나누려면 내려받는다.'
+        : '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자.';
+    }
+
+    function 팀그리기() {
+      $('[data-team]').innerHTML = b.사람
+        .map(
+          (x, i) => `<div class="pj-member"><input type="text" data-p="${i}" value="${이스케이프(x.별명)}" maxlength="12" placeholder="별명 ${i + 1}" aria-label="팀원 ${i + 1} 별명">
+          <div class="pj__chips">${역할들.map((r) => `<button type="button" class="pj__chip" data-role="${r.이름}" data-p="${i}" aria-pressed="${x.역할.includes(r.이름)}" title="${이스케이프(r.하는일)}">${r.이름}</button>`).join('')}</div>
+          <button type="button" class="pj-ico" data-delp="${i}" title="이 팀원 빼기"${b.사람.length <= 1 ? ' disabled' : ''}>✕</button></div>`,
+        )
+        .join('');
+      $<HTMLButtonElement>('[data-act="addperson"]').disabled = b.사람.length >= 6;
+    }
+
+    function 카드그리기() {
+      $<HTMLSelectElement>('[data-new-who]').innerHTML = 담당선택($<HTMLSelectElement>('[data-new-who]').value);
+      $('[data-cols]').innerHTML = 보드칸
+        .map((이름, c) => {
+          const 카드 = b.카드.map((k, i) => ({ ...k, i })).filter((k) => k.칸 === c);
+          return `<div class="pj-col"><h5>${이름} <span>${카드.length}</span></h5>${카드
+            .map(
+              (k) => `<div class="pj-kcard" data-col="${c}"><p class="pj-kcard__t">${이스케이프(k.글)}</p><div class="pj-kcard__row">
+              <select data-who="${k.i}" aria-label="담당">${담당선택(k.담당)}</select>
+              <button type="button" class="pj-ico" data-mv="-1" data-k="${k.i}" title="왼쪽 칸으로"${c === 0 ? ' disabled' : ''}>◀</button>
+              <button type="button" class="pj-ico" data-mv="1" data-k="${k.i}" title="오른쪽 칸으로"${c === 2 ? ' disabled' : ''}>▶</button>
+              <button type="button" class="pj-ico" data-delk="${k.i}" title="카드 지우기">✕</button></div></div>`,
+            )
+            .join('')}</div>`;
+        })
+        .join('');
+      const 진 = 보드진행(b);
+      $('[data-progress]').innerHTML = 진.전체
+        ? `<small>다 한 일 ${진.다함} / ${진.전체}</small><div class="pj-bar"><span style="width:${Math.round(진.비율 * 100)}%"></span></div>`
+        : '';
+    }
+
+    function 점검() {
+      점검그리기($('[data-checks]'), 보드점검(b));
+    }
+    function 모두() {
+      팀그리기();
+      카드그리기();
+      점검();
+    }
+
+    root.addEventListener('input', (ev) => {
+      const t = ev.target as HTMLInputElement;
+      if (t.dataset.p !== undefined && t.tagName === 'INPUT') {
+        const i = Number(t.dataset.p);
+        const 옛 = b.사람[i].별명;
+        b.사람[i].별명 = t.value;
+        for (const k of b.카드) if (옛 && k.담당 === 옛) k.담당 = t.value; // 별명을 고쳐도 담당이 이어지게
+        카드그리기();
+        점검();
+        저장();
+      }
+    });
+    root.addEventListener('change', (ev) => {
+      const t = ev.target as HTMLSelectElement;
+      if (t.dataset.who !== undefined) {
+        b.카드[Number(t.dataset.who)].담당 = t.value;
+        점검();
+        저장();
+      }
+    });
+    root.addEventListener('click', (ev) => {
+      const t = (ev.target as HTMLElement).closest<HTMLElement>('button');
+      if (!t) return;
+      if (t.dataset.role) {
+        const 사람 = b.사람[Number(t.dataset.p)];
+        사람.역할 = 사람.역할.includes(t.dataset.role) ? 사람.역할.filter((r) => r !== t.dataset.role) : [...사람.역할, t.dataset.role];
+        t.setAttribute('aria-pressed', String(사람.역할.includes(t.dataset.role)));
+      } else if (t.dataset.delp !== undefined) {
+        const [빠진] = b.사람.splice(Number(t.dataset.delp), 1);
+        for (const k of b.카드) if (k.담당 === 빠진.별명) k.담당 = '';
+        모두();
+      } else if (t.dataset.mv) {
+        const k = b.카드[Number(t.dataset.k)];
+        k.칸 = Math.min(2, Math.max(0, k.칸 + Number(t.dataset.mv)));
+        카드그리기();
+      } else if (t.dataset.delk !== undefined) {
+        b.카드.splice(Number(t.dataset.delk), 1);
+        카드그리기();
+      } else return;
+      점검();
+      저장();
+    });
+
+    $('[data-act="addperson"]').addEventListener('click', () => {
+      if (b.사람.length >= 6) return;
+      b.사람.push({ 별명: '', 역할: [] });
+      모두();
+      저장();
+    });
+    const 새카드 = () => {
+      const 글 = $<HTMLInputElement>('[data-new]').value.trim();
+      if (!글) return;
+      b.카드.push({ 글, 담당: $<HTMLSelectElement>('[data-new-who]').value, 칸: 0 });
+      $<HTMLInputElement>('[data-new]').value = '';
+      카드그리기();
+      점검();
+      저장();
+    };
+    $('[data-act="addcard"]').addEventListener('click', 새카드);
+    $('[data-new]').addEventListener('keydown', (ev) => {
+      if ((ev as KeyboardEvent).key === 'Enter') 새카드();
+    });
+    root.querySelector('[data-act="print"]')!.addEventListener('click', () => window.print());
+    두번확인($<HTMLButtonElement>('[data-act="clear"]'), () => {
+      b = 새보드();
+      모두();
+      저장();
+    });
+    $('[data-act="download"]').addEventListener('click', () => {
+      const 팀표 = `<h2>팀원과 역할</h2><table><tr><th>별명</th><th>역할</th></tr>${b.사람
+        .filter((x) => x.별명.trim())
+        .map((x) => `<tr><td>${이스케이프(x.별명)}</td><td>${이스케이프(x.역할.join(', ') || '—')}</td></tr>`)
+        .join('')}</table>`;
+      const 카드표 = 보드칸
+        .map((이름, c) => `<h2>${이름}</h2><ul>${b.카드.filter((k) => k.칸 === c).map((k) => `<li>${이스케이프(k.글)} — <b>${이스케이프(k.담당 || '담당 없음')}</b></li>`).join('') || '<li>(없음)</li>'}</ul>`)
+        .join('');
+      내려받기('작업 보드', 기록HTML('작업 보드', 팀표 + 카드표 + 점검목록HTML(보드점검(b)), 'table{border-collapse:collapse}td,th{border:1px solid #e2e8f0;padding:6px 12px;text-align:left}'));
+    });
+
+    모두();
+  }
+</script>

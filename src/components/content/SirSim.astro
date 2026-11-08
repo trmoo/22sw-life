@@ -1,0 +1,233 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 감염병 확산 시뮬레이터 — 점으로 보기 / 식으로 보기 (Ⅳ-7)
+ *
+ * 같은 현상을 두 가지 모델로 만든다.
+ *   점으로(행위자 모델) : 점 하나가 사람 하나. 돌아다니다 스치면 확률로 옮고, 정해진 걸음이 지나면 낫는다.
+ *                        같은 조건이라도 돌릴 때마다 결과가 조금씩 다르다(무작위).
+ *   식으로(SIR 방정식)  : 사람을 S(아직 안 걸림)·I(앓는 중)·R(나음) 세 무리의 «수»로만 다룬다.
+ *                        같은 조건이면 언제나 같은 곡선이 나온다(결정론).
+ * 지난 실험의 I 곡선이 점선으로 남아 «거리 두기를 하면 정점이 낮아지고 늦어진다»를 견줄 수 있다.
+ *
+ * ⚠ 실제 감염병을 예측하는 도구가 아니다. 숫자는 모두 모델을 이해하려고 정한 값이다(본문에 밝힌다).
+ * 계산은 src/lib/simlab.js. 화면 밖으로 나가면 애니메이션을 멈춘다.
+ *
+ * MDX 사용법
+ *   <SirSim id="u4-l7-sir" />
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<section class="lab sim" data-sirsim={id}>
+  <header class="lab__head">
+    <span class="lab__badge">시뮬레이터</span>
+    <span class="lab__title">퍼지는 것의 모델 — 감염병 확산</span>
+  </header>
+  <div class="lab__tabs" role="tablist">
+    <button type="button" role="tab" data-tab="점" aria-selected="true">① 점으로 보기 <small>사람 200명, 한 명씩</small></button>
+    <button type="button" role="tab" data-tab="식" aria-selected="false">② 식으로 보기 <small>세 무리의 수로만</small></button>
+  </div>
+
+  <div class="lab__panel" data-panel="점">
+    <div class="sim__grid">
+      <div class="sim__box">
+        <canvas class="sim__canvas" width="420" height="420" data-canvas aria-label="사람을 나타내는 점 200개. 파랑은 아직 안 걸림, 빨강은 앓는 중, 회색은 나음"></canvas>
+        <p class="sim__legend"><i class="s"></i>아직 안 걸림 S <i class="i"></i>앓는 중 I <i class="r"></i>나음 R</p>
+      </div>
+      <div class="sim__box">
+        <p class="sim__tag sim__tag--var">변수 · 입력</p>
+        <label class="sim__slider">스쳤을 때 옮을 확률 <b data-out="감염확률"></b>%
+          <input type="range" min="5" max="50" step="5" value="20" data-var="감염확률" /></label>
+        <label class="sim__slider">낫기까지 걸음 수 <b data-out="회복걸음"></b>
+          <input type="range" min="40" max="160" step="10" value="80" data-var="회복걸음" /></label>
+        <label class="sim__slider">거리 두기 (움직이지 않는 사람) <b data-out="멈춤"></b>%
+          <input type="range" min="0" max="80" step="10" value="0" data-var="멈춤" /></label>
+        <label class="sim__slider">처음부터 면역(백신) <b data-out="백신"></b>%
+          <input type="range" min="0" max="80" step="10" value="0" data-var="백신" /></label>
+        <div class="lab__row">
+          <button type="button" class="lab__btn" data-act="play">▶ 시작</button>
+          <button type="button" class="lab__btn lab__btn--ghost" data-act="reset">새로 섞기</button>
+          <button type="button" class="lab__btn lab__btn--ghost" data-act="end">끝까지 한 번에</button>
+        </div>
+        <p class="sim__note">변수를 바꾼 뒤에는 [새로 섞기] 를 눌러야 반영된다.</p>
+      </div>
+    </div>
+    <div class="sim__stats sim__stats--4" data-stats></div>
+    <div class="lab__chart" data-chart></div>
+  </div>
+
+  <div class="lab__panel" data-panel="식" hidden>
+    <div class="sim__box">
+      <p class="sim__tag sim__tag--rule">규칙 (하루마다)</p>
+      <p class="sim__formula">새로 걸리는 사람 = <b>β</b> × S × I ÷ N &nbsp;&nbsp;·&nbsp;&nbsp; 새로 낫는 사람 = <b>γ</b> × I</p>
+      <label class="sim__slider">β (하루에 한 환자가 옮기는 정도) <b data-out-e="베타"></b>
+        <input type="range" min="0.05" max="0.6" step="0.05" value="0.3" data-eq="베타" /></label>
+      <label class="sim__slider">γ (하루에 낫는 비율, 1 ÷ 앓는 날 수) <b data-out-e="감마"></b>
+        <input type="range" min="0.05" max="0.3" step="0.05" value="0.1" data-eq="감마" /></label>
+      <label class="sim__slider">처음부터 면역(백신) <b data-out-e="백신"></b>%
+        <input type="range" min="0" max="80" step="10" value="0" data-eq="백신" /></label>
+      <p class="sim__note" data-r0></p>
+    </div>
+    <div class="sim__stats sim__stats--4" data-eqstats></div>
+    <div class="lab__chart" data-eqchart></div>
+  </div>
+</section>
+
+<script>
+  import { 난수, 확산만들기, 확산한걸음, sir방정식 } from '@lib/simlab.js';
+  import { 여러선 } from '@lib/datatools.js';
+
+  const 색 = { S: '#2563eb', I: '#dc2626', R: '#94a3b8' } as const;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-sirsim]')) {
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const cv = $<HTMLCanvasElement>('[data-canvas]');
+    const g = cv.getContext('2d')!;
+    const W = cv.width;
+    let rnd = 난수(1);
+    let 모델 = 확산만들기({}, rnd);
+    let 도는중 = false;
+    let 보임 = true;
+    let 지난I: number[] | null = null;
+
+    const 변수 = () => ({
+      감염확률: Number($<HTMLInputElement>('[data-var="감염확률"]').value) / 100,
+      회복걸음: Number($<HTMLInputElement>('[data-var="회복걸음"]').value),
+      멈춤: Number($<HTMLInputElement>('[data-var="멈춤"]').value) / 100,
+      백신: Number($<HTMLInputElement>('[data-var="백신"]').value) / 100,
+    });
+    function 숫자표시() {
+      const v = 변수();
+      $('[data-out="감염확률"]').textContent = String(Math.round(v.감염확률 * 100));
+      $('[data-out="회복걸음"]').textContent = String(v.회복걸음);
+      $('[data-out="멈춤"]').textContent = String(Math.round(v.멈춤 * 100));
+      $('[data-out="백신"]').textContent = String(Math.round(v.백신 * 100));
+    }
+
+    function 그리기() {
+      g.fillStyle = '#fff';
+      g.fillRect(0, 0, W, W);
+      for (const p of 모델.점) {
+        g.fillStyle = 색[p.상태 as 'S' | 'I' | 'R'];
+        g.beginPath();
+        g.arc(p.x * (W - 12) + 6, p.y * (W - 12) + 6, p.멈춤 ? 4 : 5, 0, Math.PI * 2);
+        g.fill();
+        if (p.멈춤) { g.strokeStyle = '#0f172a'; g.lineWidth = 1; g.stroke(); }
+      }
+    }
+    function 표() {
+      const 끝 = 모델.기록[모델.기록.length - 1];
+      const 정점 = 모델.기록.reduce((a, b) => (b.I > a.I ? b : a));
+      const 걸린 = 끝.I + 끝.R - 모델.면역;
+      $('[data-stats]').innerHTML =
+        `<div class="lab__stat"><span>걸음</span><b>${모델.걸음}</b></div>` +
+        `<div class="lab__stat"><span>지금 앓는 사람</span><b>${끝.I}명</b></div>` +
+        `<div class="lab__stat"><span>한 번이라도 걸린 사람</span><b>${걸린}명</b></div>` +
+        `<div class="lab__stat"><span>가장 많이 앓을 때</span><b>${정점.I}명 (${정점.걸음}걸음)</b></div>`;
+      const 계열 = [
+        { 이름: 'S 안 걸림', 값들: 모델.기록.map((x) => x.S), 색: 색.S },
+        { 이름: 'I 앓는 중', 값들: 모델.기록.map((x) => x.I), 색: 색.I },
+        { 이름: 'R 나음', 값들: 모델.기록.map((x) => x.R), 색: 색.R },
+      ];
+      if (지난I) 계열.push({ 이름: '지난 실험의 I', 값들: 지난I, 색: '#7f1d1d', 점선: true } as never);
+      $('[data-chart]').innerHTML = 여러선(계열, {
+        x값들: Array.from({ length: Math.max(모델.기록.length, 지난I?.length ?? 0) }, (_, i) => i),
+        x이름: '걸음', y이름: '사람 수', y최대: 200, 눈금수: 6,
+      });
+    }
+
+    function 새로(지난것남기기 = true) {
+      if (지난것남기기 && 모델.걸음 > 0) 지난I = 모델.기록.map((x) => x.I);
+      rnd = 난수(Math.floor(Math.random() * 1e9));
+      모델 = 확산만들기(변수(), rnd);
+      도는중 = false;
+      $('[data-act="play"]').textContent = '▶ 시작';
+      그리기();
+      표();
+    }
+
+    function 진행() {
+      if (도는중 && 보임) {
+        for (let k = 0; k < 2; k++) 확산한걸음(모델, rnd);
+        그리기();
+        if (모델.걸음 % 10 === 0) 표();
+        if (모델.기록[모델.기록.length - 1].I === 0) {
+          도는중 = false;
+          $('[data-act="play"]').textContent = '▶ 시작';
+          표();
+        }
+      }
+      requestAnimationFrame(진행);
+    }
+
+    /* ---------- 식으로 ---------- */
+    function 식그리기() {
+      const 베타 = Number($<HTMLInputElement>('[data-eq="베타"]').value);
+      const 감마 = Number($<HTMLInputElement>('[data-eq="감마"]').value);
+      const 백신 = Number($<HTMLInputElement>('[data-eq="백신"]').value) / 100;
+      $('[data-out-e="베타"]').textContent = 베타.toFixed(2);
+      $('[data-out-e="감마"]').textContent = 감마.toFixed(2);
+      $('[data-out-e="백신"]').textContent = String(Math.round(백신 * 100));
+      const r = sir방정식({ 베타, 감마, 백신, 일수: 200 });
+      const R0 = 베타 / 감마;
+      $('[data-r0]').textContent =
+        `β ÷ γ = ${R0.toFixed(1)} — 아무도 면역이 없을 때 환자 한 명이 앓는 동안 평균 몇 명에게 옮기는지를 뜻한다(기초 감염 재생산 수). ` +
+        (R0 * (1 - 백신) < 1 ? '면역이 없는 사람 몫을 곱하면 1보다 작다 — 퍼지지 못하고 잦아든다.' : '1보다 크면 처음에는 퍼진다.');
+      const 걸린 = 10000 - Math.round(10000 * 백신) - r.끝감염안됨;
+      $('[data-eqstats]').innerHTML =
+        `<div class="lab__stat"><span>앓는 사람이 가장 많은 날</span><b>${r.정점날}일째</b></div>` +
+        `<div class="lab__stat"><span>그날 앓는 사람</span><b>${Math.round(r.정점감염).toLocaleString('ko-KR')}명</b></div>` +
+        `<div class="lab__stat"><span>200일 동안 걸린 사람</span><b>${Math.round(걸린).toLocaleString('ko-KR')}명</b></div>` +
+        `<div class="lab__stat"><span>인구</span><b>10,000명</b></div>`;
+      $('[data-eqchart]').innerHTML = 여러선(
+        [
+          { 이름: 'S 안 걸림', 값들: r.기록.map((x) => x.S), 색: 색.S },
+          { 이름: 'I 앓는 중', 값들: r.기록.map((x) => x.I), 색: 색.I },
+          { 이름: 'R 나음', 값들: r.기록.map((x) => x.R), 색: 색.R },
+        ],
+        { x값들: r.기록.map((x) => `${x.날}일`), x이름: '날', y이름: '사람 수', y최대: 10000, 눈금수: 8 }
+      );
+    }
+
+    root.addEventListener('input', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.matches('[data-eq]')) 식그리기();
+      else 숫자표시();
+    });
+    root.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const tab = t.closest<HTMLElement>('[data-tab]');
+      if (tab) {
+        for (const b of root.querySelectorAll<HTMLElement>('[data-tab]')) b.setAttribute('aria-selected', String(b === tab));
+        for (const p of root.querySelectorAll<HTMLElement>('[data-panel]')) p.hidden = p.dataset.panel !== tab.dataset.tab;
+        if (tab.dataset.tab === '식') 식그리기();
+        else 도는중 = false;
+        return;
+      }
+      const b = t.closest<HTMLElement>('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'play') {
+        if (모델.기록[모델.기록.length - 1].I === 0) 새로();
+        도는중 = !도는중;
+        b.textContent = 도는중 ? '❚❚ 멈춤' : '▶ 계속';
+      }
+      if (b.dataset.act === 'reset') 새로();
+      if (b.dataset.act === 'end') {
+        도는중 = false;
+        $('[data-act="play"]').textContent = '▶ 시작';
+        while (모델.걸음 < 2000 && 모델.기록[모델.기록.length - 1].I > 0) 확산한걸음(모델, rnd);
+        그리기();
+        표();
+      }
+    });
+    /* 화면 밖이면 멈춘다 — 다른 쪽을 읽는 동안 컴퓨터를 붙잡지 않게 */
+    new IntersectionObserver((es) => { 보임 = es[0].isIntersecting; }).observe(root);
+    숫자표시();
+    새로(false);
+    requestAnimationFrame(진행);
+  }
+</script>

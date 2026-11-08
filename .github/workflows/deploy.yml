@@ -1,0 +1,110 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 밀린 실행은 최신 것만 남긴다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 3단원 예제는 판다스·맷플롯립을 쓴다. 브라우저 실행기(Pyodide 314.0.3)에 든 판과 같은 판으로 맞춘다 —
+      # 그래야 「확인된 실행 결과」(출력 글자와 그림)가 학생 화면과 같다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 판다스·맷플롯립 설치 (Pyodide 와 같은 판)
+        run: pip install pandas==3.0.2 matplotlib==3.10.8
+
+      # 실행기가 실제로 잡히는지 먼저 찍어 둔다.
+      # check:examples 가 예제를 "미검증"으로 넘기면 조용히 지나가므로,
+      # 로그에서 python 유무를 눈으로 확인할 수 있어야 한다.
+      - name: 실행기 확인
+        run: |
+          echo "node  $(node --version)"
+          echo "python3 $(python3 --version 2>&1 || echo 없음)"
+          echo "python  $(python --version 2>&1 || echo 없음)"
+
+      # 빌드가 곧 검사다 (CLAUDE.md 7장). 한 덩어리로 돌리면 로그를 못 볼 때
+      # 어느 단계가 깨졌는지 알 수 없어서, 단계마다 따로 돌린다.
+      - name: 1. check:data — 성취기준 매핑·커버리지
+        run: npm run check:data
+
+      - name: 2. check:content — 본문 ↔ curriculum.json 이중 확인
+        run: npm run check:content
+
+      - name: 3. check:toc — 목차 강조 판정
+        run: npm run check:toc
+
+      - name: 4. check:examples — 예제 코드 실제 실행
+        run: npm run check:examples
+
+      # 가상 보드 엔진: 미션 정답·오답 채점 + 생성한 마이크로비트 코드의 파이썬 문법 검사.
+      # (아두이노 코드 문법 검사는 zig 가 있는 로컬에서만 돈다 — 여기서는 「미검증」으로 넘어간다)
+      - name: 4-2. check:boardsim — 가상 보드 엔진
+        run: npm run check:boardsim
+
+      # 3단원 실험실 계산이 판다스 값과 같은지 + 실행기 파일(빌드하지 않는 public/runner) 문법
+      - name: 4-3. check:datatools — 데이터 도구 ↔ 판다스 대조
+        run: npm run check:datatools
+
+      - name: 4-4. check:runner — 실행기 파일 문법·글꼴
+        run: npm run check:runner
+
+      # 4단원 시뮬레이션 엔진: 재현성·보존·변수의 방향 + SIR 방정식을 파이썬과 대조
+      - name: 4-5. check:simlab — 시뮬레이션 엔진
+        run: npm run check:simlab
+
+      - name: 4-6. check:projtools — 프로젝트 도구(Ⅴ단원)
+        run: npm run check:projtools
+
+      - name: 5. astro build — 정적 생성
+        run: npx astro build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      - name: 6. check:html — 산출물 전수 검사
+        run: npm run check:html
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      - uses: actions/configure-pages@v5
+        # 저장소마다 Actions 기본 권한이 달라 Pages 자동 활성화가 거부될 수 있다.
+        # 그때는 Settings → Pages → Source 를 "GitHub Actions" 로 한 번만 바꾼다.
+        continue-on-error: true
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

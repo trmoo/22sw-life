@@ -1,0 +1,224 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 그래프 고르기 실험실 — 목적에 맞는 시각화 고르기 ([12소생03-03])
+ *
+ * 평가 고려 사항 「올바른 시각화 방법을 선택하였는지」를 그대로 연습한다.
+ * 미션(목적)마다 그래프 종류와 자료를 골라 그려 보고, 맞지 않으면 «왜 안 맞는지»를 듣는다.
+ * 막대·꺾은선에는 「세로축을 0부터」 스위치가 있어, 축을 자르면 차이가 부풀어 보이는 것을 직접 겪는다.
+ *
+ * MDX 사용법
+ *   <ChartLab id="u3-l6-chart" />      (기본 파일 bike.csv)
+ */
+import { readFileSync } from 'node:fs';
+
+interface Props {
+  id: string;
+  file?: string;
+}
+const { id, file = 'bike.csv' } = Astro.props;
+const csv = readFileSync(`public/data/${file}`, 'utf8');
+---
+
+<section class="lab" data-chartlab={id}>
+  <script type="application/json" data-csv set:html={JSON.stringify(csv)} />
+  <header class="lab__head">
+    <span class="lab__badge">그래프 고르기</span>
+    <span class="lab__title">목적에 맞는 그래프를 골라 그려 보자</span>
+    <span class="lab__score" data-score></span>
+  </header>
+
+  <div class="lab__missions" data-missions></div>
+  <p class="lab__purpose" data-purpose></p>
+
+  <div class="lab__row lab__pick">
+    <span class="lab__pick-label">그래프</span>
+    <div class="lab__kinds" data-kinds>
+      <button type="button" data-kind="꺾은선">📈 꺾은선</button>
+      <button type="button" data-kind="막대">📊 막대</button>
+      <button type="button" data-kind="히스토그램">▥ 히스토그램</button>
+      <button type="button" data-kind="산점도">⁘ 산점도</button>
+    </div>
+  </div>
+  <div class="lab__row lab__pick">
+    <label>무엇을 <select class="lab__sel" data-what></select></label>
+    <label class="lab__switch" data-zero-wrap><input type="checkbox" data-zero checked /> 세로축을 0부터</label>
+  </div>
+
+  <div class="lab__chart" data-chart>
+    <p class="lab__empty">그래프 종류를 먼저 골라 보자.</p>
+  </div>
+  <p class="lab__msg" data-msg aria-live="polite"></p>
+</section>
+
+<script>
+  import { CSV읽기, 숫자로, 묶음평균, 차례, 꺾은선, 막대, 히스토그램, 산점도 } from '@lib/datatools.js';
+
+  type 종류 = '꺾은선' | '막대' | '히스토그램' | '산점도';
+
+  /* 그래프마다 고를 수 있는 자료 */
+  const 자료: Record<종류, { 열쇠: string; 이름: string }[]> = {
+    꺾은선: [
+      { 열쇠: '월합계', 이름: '달마다 대여 건수 합계 (12개)' },
+      { 열쇠: '날짜별', 이름: '날마다 대여 건수 (365개)' },
+      { 열쇠: '월기온', 이름: '달마다 평균기온 (12개)' },
+    ],
+    막대: [
+      { 열쇠: '요일평균', 이름: '요일별 평균 대여 건수' },
+      { 열쇠: '계절평균', 이름: '계절별 평균 대여 건수' },
+      { 열쇠: '월합계', 이름: '달마다 대여 건수 합계' },
+    ],
+    히스토그램: [
+      { 열쇠: '대여분포', 이름: '하루 대여 건수' },
+      { 열쇠: '기온분포', 이름: '하루 평균기온' },
+      { 열쇠: '먼지분포', 이름: '하루 미세먼지' },
+    ],
+    산점도: [
+      { 열쇠: '기온대여', 이름: '평균기온 ↔ 대여 건수' },
+      { 열쇠: '비대여', 이름: '강수량 ↔ 대여 건수' },
+      { 열쇠: '먼지대여', 이름: '미세먼지 ↔ 대여 건수' },
+    ],
+  };
+
+  /* 미션 — 목적 하나에 맞는 그래프 하나. 맞지 않는 종류를 고르면 그 까닭을 들려준다 */
+  const 미션 = [
+    {
+      목적: '1년 동안 달마다 대여가 어떻게 늘고 줄었는지 보고 싶다.',
+      종류: '꺾은선', 자료: '월합계',
+      왜: { 막대: '막대로도 그릴 수 있다. 하지만 «흐름»은 점을 선으로 이어야 오르내림이 한눈에 보인다.', 히스토그램: '히스토그램은 값이 어디에 몰렸는지(분포)를 본다. 차례(시간)가 사라진다.', 산점도: '산점도는 두 값의 관계를 본다. 시간에 따른 흐름에는 꺾은선이 맞다.' },
+      자료왜: { 날짜별: '다만 365개 점이 빽빽해 달마다의 흐름이 잘 안 보인다. 목적이 «달마다»이니 달로 묶어 보자.', 월기온: '그래프는 맞는데 자료가 기온이다. 목적은 «대여»의 흐름이다.' },
+    },
+    {
+      목적: '어느 요일에 자전거를 가장 많이 빌리는지 견주고 싶다.',
+      종류: '막대', 자료: '요일평균',
+      왜: { 꺾은선: '요일은 이어지는 양이 아니라 «서로 다른 묶음»이다. 선으로 이으면 사이에 값이 있는 것처럼 보인다.', 히스토그램: '히스토그램은 한 값의 분포를 본다. 요일끼리 견주려면 막대가 맞다.', 산점도: '산점도는 두 수치의 관계다. 요일은 수치가 아니다.' },
+      자료왜: { 계절평균: '막대는 맞다. 목적은 계절이 아니라 «요일»이다.', 월합계: '막대는 맞다. 목적은 달이 아니라 «요일»이다.' },
+    },
+    {
+      목적: '하루 대여 건수가 보통 어느 정도에 몰려 있는지 알고 싶다.',
+      종류: '히스토그램', 자료: '대여분포',
+      왜: { 꺾은선: '꺾은선은 시간 차례대로 값을 잇는다. «얼마짜리 날이 며칠인가»는 히스토그램이 보여 준다.', 막대: '막대는 묶음끼리 견준다. 값의 구간을 나누어 날을 세는 것이 히스토그램이다.', 산점도: '산점도는 두 값이 필요하다. 한 값이 어디에 몰렸는지는 히스토그램이다.' },
+      자료왜: { 기온분포: '히스토그램은 맞다. 목적은 기온이 아니라 «대여 건수»다.', 먼지분포: '히스토그램은 맞다. 목적은 미세먼지가 아니라 «대여 건수»다.' },
+    },
+    {
+      목적: '기온이 오르면 대여도 함께 느는지 알아보고 싶다.',
+      종류: '산점도', 자료: '기온대여',
+      왜: { 꺾은선: '날짜 차례로 그린 두 선을 눈으로 견주기는 어렵다. 두 값의 관계는 점 하나에 (기온, 대여)를 함께 찍는 산점도가 보여 준다.', 막대: '막대는 묶음끼리 견준다. 두 수치가 함께 움직이는지는 산점도로 본다.', 히스토그램: '히스토그램은 한 값만 본다. 관계에는 두 값이 필요하다.' },
+      자료왜: { 비대여: '산점도는 맞다. 목적은 비가 아니라 «기온»이다. (비와의 관계도 흥미로우니 기억해 두자!)', 먼지대여: '산점도는 맞다. 목적은 미세먼지가 아니라 «기온»이다.' },
+    },
+  ] as const;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-chartlab]')) {
+    const 표 = CSV읽기(JSON.parse(root.querySelector('[data-csv]')!.textContent!));
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const 값 = (k: string) => 표.행.map((r) => 숫자로(r[k]) as number);
+    let 지금 = 0;
+    let 고른종류: 종류 | null = null;
+    const 끝낸 = new Set<number>();
+
+    function 그림(열쇠: string, 영 = true): string {
+      const 월 = (k: string, how: '합' | '평균') =>
+        묶음평균(표.행, '월', k, 차례.월).map((m) => ({ 이름: `${m.이름}월`, 값: how === '합' ? m.합 : m.평균 }));
+      switch (열쇠) {
+        case '월합계':
+          return 고른종류 === '막대'
+            ? 막대(월('대여건수', '합'), { x이름: '월', y이름: '대여 건수 합계', y0부터: 영 })
+            : 꺾은선(월('대여건수', '합'), { x이름: '월', y이름: '대여 건수 합계', y0부터: 영 });
+        case '날짜별':
+          return 꺾은선(표.행.map((r) => ({ 이름: r['날짜'].endsWith('-01') ? `${Number(r['날짜'].slice(5, 7))}월` : '', 값: 숫자로(r['대여건수']) as number })), { x이름: '날짜', y이름: '대여 건수', y0부터: 영 });
+        case '월기온':
+          return 꺾은선(월('평균기온', '평균'), { x이름: '월', y이름: '평균기온(℃)', y0부터: false });
+        case '요일평균':
+          return 막대(묶음평균(표.행, '요일', '대여건수', 차례.요일).map((m) => ({ 이름: m.이름, 값: m.평균 })), { x이름: '요일', y이름: '평균 대여 건수', y0부터: 영 });
+        case '계절평균':
+          return 막대(묶음평균(표.행, '계절', '대여건수', 차례.계절).map((m) => ({ 이름: m.이름, 값: m.평균 })), { x이름: '계절', y이름: '평균 대여 건수', y0부터: 영 });
+        case '대여분포':
+          return 히스토그램(값('대여건수'), { x이름: '하루 대여 건수', 구간수: 12 });
+        case '기온분포':
+          return 히스토그램(값('평균기온'), { x이름: '평균기온(℃)', 구간수: 12 });
+        case '먼지분포':
+          return 히스토그램(값('미세먼지'), { x이름: '미세먼지(㎍/㎥)', 구간수: 12 });
+        case '기온대여':
+          return 산점도(값('평균기온'), 값('대여건수'), { x이름: '평균기온(℃)', y이름: '대여 건수' });
+        case '비대여':
+          return 산점도(값('강수량'), 값('대여건수'), { x이름: '강수량(mm)', y이름: '대여 건수' });
+        case '먼지대여':
+          return 산점도(값('미세먼지'), 값('대여건수'), { x이름: '미세먼지(㎍/㎥)', y이름: '대여 건수' });
+      }
+      return '';
+    }
+
+    function 말(t: string, 좋음 = false) {
+      const el = $('[data-msg]');
+      el.textContent = t;
+      el.classList.toggle('is-ok', 좋음);
+    }
+
+    function 미션그리기() {
+      $('[data-missions]').innerHTML = 미션
+        .map((_, i) => `<button type="button" data-m="${i}" aria-pressed="${i === 지금}">${끝낸.has(i) ? '✓' : i + 1}</button>`)
+        .join('');
+      $('[data-purpose]').innerHTML = `<b>목적 ${지금 + 1}</b> ${미션[지금].목적}`;
+      $('[data-score]').textContent = `${끝낸.size} / ${미션.length}`;
+    }
+
+    function 그리기() {
+      for (const b of root.querySelectorAll<HTMLElement>('[data-kind]')) b.setAttribute('aria-pressed', String(b.dataset.kind === 고른종류));
+      const sel = $<HTMLSelectElement>('[data-what]');
+      if (!고른종류) {
+        sel.innerHTML = '<option>그래프를 먼저 고른다</option>';
+        sel.disabled = true;
+        $('[data-zero-wrap]').hidden = true;
+        return;
+      }
+      sel.disabled = false;
+      const 영 = $<HTMLInputElement>('[data-zero]').checked;
+      $('[data-zero-wrap]').hidden = !(고른종류 === '막대' || 고른종류 === '꺾은선');
+      const m = 미션[지금];
+      if (!sel.value) {
+        $('[data-chart]').innerHTML = '<p class="lab__empty">무엇을 그릴지 골라 보자.</p>';
+        return 고른종류 === m.종류 ? 말('') : 말(`🤔 ${(m.왜 as Record<string, string>)[고른종류]}`);
+      }
+      $('[data-chart]').innerHTML = 그림(sel.value, 영);
+
+      if (고른종류 !== m.종류) {
+        말(`🤔 ${(m.왜 as Record<string, string>)[고른종류]}`);
+      } else if (sel.value !== m.자료) {
+        말(`👍 그래프 종류는 맞다. ${(m.자료왜 as Record<string, string>)[sel.value] ?? ''}`);
+      } else if (!영 && (고른종류 === '막대')) {
+        말('그래프는 맞다. 그런데 세로축을 0부터 시작하지 않으니 막대 높이 차이가 실제보다 몇 배나 커 보인다. 막대그래프는 0부터 그려야 정직하다.');
+      } else {
+        끝낸.add(지금);
+        말(`✓ 목적에 맞는 그래프다!${지금 < 미션.length - 1 ? ' 다음 목적으로 넘어가 보자.' : ''}${끝낸.size === 미션.length ? ' 네 가지 목적을 모두 해냈다.' : ''}`, true);
+        미션그리기();
+      }
+    }
+
+    function 종류바꾸기(k: 종류) {
+      고른종류 = k;
+      /* 첫 자료가 저절로 골라지면 «종류만 고르면 정답»이 된다 — 자료도 학생이 고르게 빈 칸부터 */
+      $<HTMLSelectElement>('[data-what]').innerHTML =
+        '<option value="" selected disabled>— 무엇을 그릴지 고른다 —</option>' +
+        자료[k].map((d) => `<option value="${d.열쇠}">${d.이름}</option>`).join('');
+      그리기();
+    }
+
+    root.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const k = t.closest<HTMLElement>('[data-kind]');
+      if (k) return 종류바꾸기(k.dataset.kind as 종류);
+      const m = t.closest<HTMLElement>('[data-m]');
+      if (m) {
+        지금 = Number(m.dataset.m);
+        고른종류 = null;
+        $('[data-chart]').innerHTML = '<p class="lab__empty">그래프 종류를 먼저 골라 보자.</p>';
+        말('');
+        미션그리기();
+        그리기();
+      }
+    });
+    root.addEventListener('change', 그리기);
+    미션그리기();
+    그리기();
+  }
+</script>

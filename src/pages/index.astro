@@ -1,0 +1,165 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+import BaseLayout from '@layouts/BaseLayout.astro';
+import StandardBadge from '@components/StandardBadge.astro';
+import { 메타, 단원목록, slug, 총차시수, 전체성취기준 } from '@lib/curriculum';
+import { href } from '@lib/url';
+
+const 목차 = [
+  { id: 'units', text: '단원 목록', depth: 2 as const },
+  { id: 'standards', text: '성취기준 한눈에', depth: 2 as const },
+  { id: 'about', text: '이 교과서에 대하여', depth: 2 as const },
+];
+
+/* 집필 진행 상황은 데이터에서 센다.
+   손으로 적어 두었더니 2단원을 마친 뒤에도 「2단원을 집필하고 있다」가 남아
+   화면이 사실과 어긋났다(2026-08-08). 다시 낡지 않게 상태를 세어 쓴다. */
+const 차시전체 = 단원목록.flatMap((u) => u.차시);
+const 검토중 = 차시전체.filter((l) => l.상태 === 'review').length;
+const 확정 = 차시전체.filter((l) => l.상태 === 'published').length;
+const 집필중 = 차시전체.filter((l) => l.상태 === 'draft').length;
+---
+
+<BaseLayout
+  제목="과목 홈"
+  설명={`2022 개정 교육과정 고등학교 「${메타.과목명}」 웹 교과서. 성취기준 ${전체성취기준.length}개, ${총차시수}차시.`}
+  목차={목차}
+>
+  <div class="hero">
+    <span class="hero__eyebrow">{메타.과목구분}</span>
+    <h1>{메타.과목명}</h1>
+    <p class="hero__lead">
+      소프트웨어가 바꾼 세상을 읽는 데서 시작해, 센서로 작품을 만들고, 데이터로 현상을 분석하고,
+      시뮬레이션으로 미리 실험하고, 스타트업 프로젝트로 새로운 가치를 만든다.
+      다섯 단원이 모두 <strong>직접 해 보는 융합 프로젝트</strong>로 이어진다.
+    </p>
+    <div class="hero__meta">
+      <span class="chip">{단원목록.length}개 단원</span>
+      <span class="chip">{총차시수}차시</span>
+      <span class="chip">성취기준 {전체성취기준.length}개</span>
+      <span class="chip">융합 선택</span>
+    </div>
+  </div>
+
+  <div class="article">
+    <h2 id="units">단원 목록<a class="heading-anchor" href="#units" aria-hidden="true">#</a></h2>
+
+    <ul class="card-list">
+      {
+        단원목록.map((u) => (
+          <li>
+            <a class="link-card" href={href(`/units/${slug(u.단원번호)}/`)}>
+              <span class="link-card__no">{u.단원번호}</span>
+              <span class="link-card__body">
+                <h3>{u.단원명}</h3>
+                <p>
+                  {u.영역} · 성취기준 {u.성취기준.length}개 · {u.차시.length}차시
+                </p>
+              </span>
+              <span class="link-card__arrow" aria-hidden="true">→</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    <h2 id="standards">
+      성취기준 한눈에<a class="heading-anchor" href="#standards" aria-hidden="true">#</a>
+    </h2>
+    <p>
+      이 교과서의 모든 차시는 성취기준에 매핑된다. 코드를 누르면 그 성취기준을 담당하는
+      차시로 갈 수 있다.
+    </p>
+
+    <div class="table-wrap">
+      <table class="tb">
+        <thead>
+          <tr>
+            <th scope="col">코드</th>
+            <th scope="col">영역</th>
+            <th scope="col">성취기준</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            단원목록.flatMap((u) =>
+              u.성취기준.map((s) => (
+                <tr>
+                  <td><StandardBadge 코드={s.코드} /></td>
+                  <td style="white-space:nowrap">{u.영역}</td>
+                  <td>{s.본문}</td>
+                </tr>
+              ))
+            )
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="about">
+      이 교과서에 대하여<a class="heading-anchor" href="#about" aria-hidden="true">#</a>
+    </h2>
+
+    <div class="box box--info">
+      <span class="box__label">이 과목은 어떤 과목인가</span>
+      <p>
+        「{메타.과목명}」은 2022 개정 교육과정 정보과의 <strong>융합 선택 과목</strong>이다.
+        교육과정은 이 과목을 「다양한 학문 분야와의 융합을 통해 문제 해결을 경험할 수 있는
+        프로젝트 형태」로 짰다. 그래서 이 교과서도 단원마다 <strong>개념 → 직접 해 보기 → 융합 프로젝트</strong>
+        차례로 흐른다.
+      </p>
+    </div>
+
+    <div class="box box--tip">
+      <span class="box__label">장치가 없어도 수업이 된다</span>
+      <p>
+        교육과정은 피지컬 컴퓨팅 도구를 쓰기 어려우면 가상 시뮬레이터를 쓰고, 물리적인 구현이 없더라도
+        아이디어·설계 기록으로 과정을 평가하라고 한다. 이 교과서의 실습은 브라우저 안에서 돌아가고,
+        기획서·설계서는 <strong>[내려받기]</strong>로 파일로 남길 수 있다. 이름이나 학번은 받지 않는다.
+      </p>
+    </div>
+
+    <div class="box">
+      <span class="box__label">어느 교과서를 쓰든 찾아올 수 있다</span>
+      <p>
+        상단의 <strong>교과서 선택</strong>에서 학교에서 쓰는 교과서를 고르면, 단원명 옆에 그
+        교과서의 단원명과 쪽수가 함께 표시된다. 전체 대응은
+        <a href={href('/crosswalk/')}>교과서 대조표</a>에서 볼 수 있다.
+      </p>
+    </div>
+
+    <div class="box box--tip">
+      <span class="box__label">파이썬 예제는 눌러서 바로 돌아간다</span>
+      <p>
+        Ⅲ·Ⅳ단원의 파이썬 예제에는 <strong>[▶ 실행]</strong> 단추가 있다. 설치 없이 브라우저에서 그대로
+        돌아가고, <strong>[고치기]</strong>로 값을 바꿔 다시 실행해 볼 수 있다. 수업에 쓸 컴퓨터에서
+        실행기가 도는지 미리 확인하려면 <a href={href('/guide/#doctor')}>사용법과 실행기 진단</a>에서 점검해 보자.
+      </p>
+    </div>
+
+    {
+      집필중 + 검토중 > 0 && (
+        <div class="box box--draft">
+          <span class="box__label">집필 진행 상황</span>
+          <p>
+            {집필중 > 0 ? (
+              <>
+                <strong>
+                  {총차시수}차시 가운데 {총차시수 - 집필중}차시
+                </strong>
+                의 본문이 집필됐다. 아직 본문이 없는 차시도 학습 목표·핵심 개념·교과서 대조 정보는
+                볼 수 있다.
+              </>
+            ) : (
+              <>
+                <strong>{총차시수}차시 본문이 모두 집필됐다.</strong> 다만 {검토중}차시는 아직
+                <strong> 교사 검토를 거치지 않았다.</strong> 자동 검사는 전부 통과했지만 설명이
+                어색한 곳이나 오탈자가 남아 있을 수 있다.
+              </>
+            )}
+          </p>
+        </div>
+      )
+    }
+  </div>
+</BaseLayout>

@@ -1,0 +1,178 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 가치 평가표 (Ⅴ-7) — 사회적·기능적·윤리적 관점에서 우리 소프트웨어를 평가한다 ([12소생05-04])
+ *
+ * 관점마다 기준 네 가지를 1~4로 매기고 근거를 적는다. 같은 표를 «우리 팀»과 «동료(다른 팀)»가 따로 매기면
+ * 삼각형 두 개가 겹쳐 그려진다 — 두 평가가 2점 이상 갈린 기준이 토의할 거리다.
+ * 가장 낮은 관점이 «다음 판에서 먼저 손볼 곳»이 된다. 점수는 성적이 아니라 고칠 곳을 찾는 도구다.
+ *
+ * MDX 사용법
+ *   <ValueReview id="u5-l7-value" />
+ */
+import { 관점들, 점수말 } from '@lib/projtools.js';
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<section class="lab pj" data-value={id}>
+  <header class="lab__head">
+    <span class="lab__badge">가치 평가표</span>
+    <span class="lab__title">세 관점으로 본 우리 소프트웨어</span>
+  </header>
+  <p class="pj__how">
+    1 {점수말[1]} · 2 {점수말[2]} · 3 {점수말[3]} · 4 {점수말[4]}. <strong>우리 팀</strong>이 먼저 매기고, 다른 팀에게 <strong>동료</strong> 쪽을 매겨 달라고 부탁한다.
+  </p>
+
+  <div class="pj__chips" role="tablist" aria-label="누가 매기나" style="margin-bottom:var(--space-3)">
+    <button type="button" class="pj__chip" role="tab" data-who="우리" aria-pressed="true">우리 팀이 매기기</button>
+    <button type="button" class="pj__chip" role="tab" data-who="동료" aria-pressed="false">동료(다른 팀)가 매기기</button>
+  </div>
+
+  <div class="pj__two">
+    <div>
+      {
+        관점들.map((관) => (
+          <div class="pj-persp" style={`--pc:${관.색}`}>
+            <h5>{관.이름} <small>— {관.물음}</small></h5>
+            {관.기준.map((기준, i) => (
+              <div class="pj-crit">
+                <span>{기준}</span>
+                <span class="pj-score" role="group" aria-label={기준}>
+                  {[1, 2, 3, 4].map((n) => (
+                    <button type="button" data-p={관.key} data-i={i} data-n={n} aria-pressed="false" title={점수말[n]}>{n}</button>
+                  ))}
+                </span>
+              </div>
+            ))}
+            <label class="pj__field" style="margin:8px 0 0"><span style="font-size:.86rem">근거 · 한마디</span>
+              <textarea rows="2" data-note={관.key} placeholder="왜 그렇게 매겼나 — 시험 결과, 써 본 사람의 말, 확인한 것" /></label>
+          </div>
+        ))
+      }
+    </div>
+    <div class="pj-sum">
+      <svg class="pj-tri" viewBox="0 0 300 270" role="img" aria-label="세 관점 평균을 꼭짓점으로 한 삼각형" data-tri></svg>
+      <div data-table></div>
+      <div data-gaps></div>
+    </div>
+  </div>
+
+  <div class="pj__actions">
+    <button type="button" class="lab__btn" data-act="download">⬇ 내려받기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="print">🖨 인쇄</button>
+    <button type="button" class="lab__btn lab__btn--ghost pj__quiet" data-act="clear">이쪽 점수 지우기</button>
+  </div>
+  <p class="pj__note" data-saved>점수는 이 브라우저에만 저장된다. 제출하려면 내려받는다.</p>
+</section>
+
+<script>
+  import { 관점들, 점수말, 가치요약, 삼각좌표, 이스케이프, 읽기, 쓰기, 기록HTML } from '@lib/projtools.js';
+  import { 두번확인, 내려받기 } from '@lib/pjui';
+
+  type 한쪽 = { 점수: Record<string, number[]>; 근거: Record<string, string> };
+  const 빈쪽 = (): 한쪽 => ({ 점수: Object.fromEntries(관점들.map((관) => [관.key, [0, 0, 0, 0]])), 근거: {} });
+  const 쪽색 = { 우리: '#b4492b', 동료: '#2b59c3' } as const;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-value]')) {
+    const 열쇠 = 'swlife-value:' + root.dataset.value;
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const 저장본 = 읽기(열쇠) ?? {};
+    const 판: Record<'우리' | '동료', 한쪽> = { 우리: 저장본.우리 ?? 빈쪽(), 동료: 저장본.동료 ?? 빈쪽() };
+    let 누구: '우리' | '동료' = '우리';
+
+    function 삼각형() {
+      const 요 = 가치요약(판.우리.점수, 판.동료.점수);
+      const 바깥 = 삼각좌표({ social: 4, function: 4, ethic: 4 });
+      const 눈금 = [1, 2, 3].map((n) => 삼각좌표({ social: n, function: n, ethic: n }));
+      const 다각 = (점: number[][]) => 점.map((p) => p.join(',')).join(' ');
+      const 이름자리 = [[150, 28], [228, 218], [72, 218]];
+      const 쪽 = (k: '우리' | '동료', 점선: boolean) => {
+        const 평 = k === '우리' ? 요.우리 : 요.동료;
+        if (관점들.some((관) => 평[관.key] === null)) return '';
+        return `<polygon points="${다각(삼각좌표(평))}" fill="${쪽색[k]}" fill-opacity="${점선 ? 0.08 : 0.22}" stroke="${쪽색[k]}" stroke-width="2.5"${점선 ? ' stroke-dasharray="6 4"' : ''}/>`;
+      };
+      $('[data-tri]').innerHTML =
+        눈금.map((p) => `<polygon points="${다각(p)}" fill="none" stroke="#e2e8f0"/>`).join('') +
+        `<polygon points="${다각(바깥)}" fill="none" stroke="#94a3b8"/>` +
+        바깥.map((p) => `<line x1="150" y1="140" x2="${p[0]}" y2="${p[1]}" stroke="#e2e8f0"/>`).join('') +
+        쪽('동료', true) + 쪽('우리', false) +
+        관점들.map((관, i) => `<text x="${이름자리[i][0]}" y="${이름자리[i][1]}" text-anchor="middle" font-size="14" font-weight="700" fill="${관.색}">${관.이름}</text>`).join('') +
+        `<text x="12" y="262" font-size="12" fill="${쪽색.우리}">━ 우리 팀</text><text x="200" y="262" font-size="12" fill="${쪽색.동료}">┅ 동료</text>`;
+      return 요;
+    }
+
+    function 그리기(저장 = true) {
+      for (const b of root.querySelectorAll<HTMLButtonElement>('[data-who]')) b.setAttribute('aria-pressed', String(b.dataset.who === 누구));
+      for (const b of root.querySelectorAll<HTMLButtonElement>('[data-n]')) {
+        b.setAttribute('aria-pressed', String(판[누구].점수[b.dataset.p!][Number(b.dataset.i)] === Number(b.dataset.n)));
+      }
+      for (const t of root.querySelectorAll<HTMLTextAreaElement>('[data-note]')) t.value = 판[누구].근거[t.dataset.note!] ?? '';
+
+      const 요 = 삼각형();
+      const 칸 = (v: number | null) => (v === null ? '—' : v.toFixed(1));
+      $('[data-table]').innerHTML = `<table><tr><th>관점</th><th style="color:${쪽색.우리}">우리 팀</th><th style="color:${쪽색.동료}">동료</th></tr>${관점들
+        .map((관) => `<tr><td style="color:${관.색};font-weight:700">${관.이름}</td><td>${칸(요.우리[관.key])}</td><td>${칸(요.동료[관.key])}</td></tr>`)
+        .join('')}</table>`;
+      const 글: string[] = [];
+      if (!요.다매김) 글.push(`<p class="pj__note">우리 팀 쪽 기준 열두 가지를 모두 매기면 «먼저 손볼 관점»을 알려 준다.</p>`);
+      else if (요.낮은관점) 글.push(`<p class="pj-gap" style="background:var(--c-primary-soft)">우리 팀 평가에서 가장 낮은 관점은 <b>${요.낮은관점}</b>이다 — 다음 판에서 먼저 손볼 곳.</p>`);
+      if (요.갈림.length) {
+        글.push(`<p class="pj-gap"><b>두 평가가 2점 이상 갈린 기준 ${요.갈림.length}가지</b> — 왜 다르게 봤는지 이야기해 보자.<br>${요.갈림
+          .map((g) => `· [${g.관점}] ${이스케이프(g.기준)} — 우리 ${g.우리} · 동료 ${g.동료}`)
+          .join('<br>')}</p>`);
+      }
+      $('[data-gaps]').innerHTML = 글.join('');
+      if (저장) {
+        $('[data-saved]').textContent = 쓰기(열쇠, 판) ? '저장됨 ✓ — 이 브라우저에만 남는다. 제출하려면 내려받는다.' : '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자.';
+      }
+    }
+
+    root.addEventListener('click', (ev) => {
+      const t = (ev.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!t) return;
+      if (t.dataset.who) {
+        누구 = t.dataset.who as '우리' | '동료';
+        그리기(false);
+      } else if (t.dataset.n) {
+        const 줄 = 판[누구].점수[t.dataset.p!];
+        const n = Number(t.dataset.n), i = Number(t.dataset.i);
+        줄[i] = 줄[i] === n ? 0 : n; // 같은 숫자를 다시 누르면 지운다
+        그리기();
+      }
+    });
+    root.addEventListener('input', (ev) => {
+      const t = ev.target as HTMLTextAreaElement;
+      if (!t.dataset.note) return;
+      판[누구].근거[t.dataset.note] = t.value;
+      쓰기(열쇠, 판);
+    });
+    root.querySelector('[data-act="print"]')!.addEventListener('click', () => window.print());
+    두번확인($<HTMLButtonElement>('[data-act="clear"]'), () => {
+      판[누구] = 빈쪽();
+      그리기();
+    });
+    $('[data-act="download"]').addEventListener('click', () => {
+      const 요 = 가치요약(판.우리.점수, 판.동료.점수);
+      const 표 = 관점들
+        .map(
+          (관) => `<h2 style="color:${관.색}">${관.이름} — ${관.물음}</h2><table><tr><th>기준</th><th>우리 팀</th><th>동료</th></tr>${관.기준
+            .map((기준, i) => {
+              const a = 판.우리.점수[관.key][i], b = 판.동료.점수[관.key][i];
+              return `<tr><td>${이스케이프(기준)}</td><td>${a ? `${a} ${점수말[a]}` : '—'}</td><td>${b ? `${b} ${점수말[b]}` : '—'}</td></tr>`;
+            })
+            .join('')}</table><p><b>우리 팀 근거</b></p><div class="a">${이스케이프(판.우리.근거[관.key] || '(비어 있음)')}</div>
+            <p><b>동료 한마디</b></p><div class="a">${이스케이프(판.동료.근거[관.key] || '(비어 있음)')}</div>`,
+        )
+        .join('');
+      const 끝 = `<h2>정리</h2><ul>${관점들.map((관) => `<li>${관.이름}: 우리 ${요.우리[관.key]?.toFixed(1) ?? '—'} · 동료 ${요.동료[관.key]?.toFixed(1) ?? '—'}</li>`).join('')}
+        ${요.낮은관점 ? `<li>먼저 손볼 관점: ${요.낮은관점}</li>` : ''}${요.갈림.map((g) => `<li>갈린 기준: [${g.관점}] ${이스케이프(g.기준)} (우리 ${g.우리} · 동료 ${g.동료})</li>`).join('')}</ul>
+        <svg viewBox="0 0 300 270" width="300">${$('[data-tri]').innerHTML}</svg>`;
+      내려받기('가치 평가표', 기록HTML('가치 평가표 — 사회적·기능적·윤리적 관점', 표 + 끝, 'table{border-collapse:collapse;width:100%}td,th{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}'));
+    });
+
+    그리기(false);
+  }
+</script>

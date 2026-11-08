@@ -1,0 +1,633 @@
+/* © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+ * Ⅲ단원 데이터 실험실 공통 모양 (CleanLab · StatLab · ChartLab · DeidLab)
+ * 표·그래프를 자바스크립트로 그려 넣으므로 Astro 의 범위 지정 스타일 대신 전역으로 둔다.
+ * 클래스 이름은 모두 lab 으로 시작한다 — 다른 컴포넌트와 겹치지 않게.
+ */
+.lab {
+    margin: var(--space-6) 0;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    background: var(--c-surface);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-4);
+    min-width: 0;
+  }
+  .lab__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-3);
+  }
+  .lab__badge {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--c-primary);
+    border-radius: var(--radius-pill);
+    padding: 3px 12px;
+  }
+  .lab__title {
+    font-weight: 700;
+    min-width: 0;
+  }
+  .lab__head .lab__btn {
+    margin-left: auto;
+  }
+  .lab__meters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+  .lab__meters .mt {
+    font-size: 0.86rem;
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+  }
+  .lab__meters .mt b {
+    font-size: 1.05rem;
+    margin-right: 4px;
+  }
+  .lab__meters .mt--bad {
+    background: var(--warn-soft);
+    border-color: var(--warn);
+  }
+  .lab__meters .mt--ok {
+    background: var(--ok-soft);
+    border-color: var(--ok);
+  }
+  .lab__steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: var(--space-3);
+  }
+  .lab__step {
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    background: var(--c-bg);
+    min-width: 0;
+  }
+  .lab__step-title {
+    margin: 0 0 4px;
+    font-weight: 800;
+  }
+  .lab__step-title b {
+    color: var(--c-primary);
+  }
+  .lab__step-why {
+    margin: 0 0 var(--space-2);
+    font-size: 0.88rem;
+    color: var(--c-text-soft);
+  }
+  .lab__checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-bottom: var(--space-2);
+    font-size: 0.9rem;
+  }
+  .lab__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+  }
+  .lab__inline {
+    font-size: 0.9rem;
+  }
+  .lab__num {
+    width: 7em;
+    font: inherit;
+    padding: 4px 6px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+  }
+  .lab__btn {
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--c-primary);
+    background: var(--c-primary);
+    color: #fff;
+    cursor: pointer;
+  }
+  .lab__btn:hover {
+    background: var(--c-primary-deep);
+  }
+  .lab__btn--ghost {
+    background: var(--c-surface);
+    color: var(--c-primary);
+  }
+  .lab__btn--ghost:hover {
+    background: var(--c-primary-soft);
+  }
+  .lab__msg {
+    min-height: 1.6em;
+    margin: var(--space-3) 0;
+    font-weight: 700;
+    color: var(--warn);
+  }
+  .lab__msg.is-ok {
+    color: var(--ok);
+  }
+  .lab__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-size: 0.8rem;
+    margin-bottom: var(--space-2);
+  }
+  .lab__lg {
+    padding: 2px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--c-border);
+  }
+  .lab__lg--blank,
+  .lab__table .c-blank {
+    background: #fef3c7;
+  }
+  .lab__lg--text,
+  .lab__table .c-text {
+    background: #fed7aa;
+  }
+  .lab__lg--out,
+  .lab__table .c-out {
+    background: #fecaca;
+    font-weight: 800;
+  }
+  .lab__lg--dup,
+  .lab__table .r-dup td {
+    background: #e9d5ff;
+  }
+  .lab__table {
+    max-height: 22em;
+    overflow: auto;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+  }
+  .lab__table table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .lab__table th,
+  .lab__table td {
+    padding: 3px 9px;
+    border-bottom: 1px solid var(--c-border);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .lab__table th {
+    position: sticky;
+    top: 0;
+    background: var(--c-surface-2);
+    text-align: center;
+  }
+  .lab__table .c-no {
+    color: var(--c-text-faint);
+  }
+  .lab__code {
+    margin-top: var(--space-3);
+  }
+  .lab__code summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--c-primary);
+  }
+  .lab__code pre {
+    margin: var(--space-2) 0 0;
+    padding: var(--space-3);
+    background: var(--c-code-bg);
+    color: var(--c-code-text);
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
+    overflow-x: auto;
+  }
+  .lab__foot {
+    margin-top: var(--space-3);
+  }
+  .lab__hint {
+    font-size: 0.84rem;
+    color: var(--c-text-soft);
+  }
+
+/* ---------- 탭 · 패널 (StatLab · ChartLab) ---------- */
+.lab__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.lab__tabs button {
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  color: var(--c-text);
+  cursor: pointer;
+}
+.lab__tabs button small {
+  display: block;
+  font-weight: 500;
+  font-size: 0.76rem;
+  color: var(--c-text-soft);
+}
+.lab__tabs button[aria-selected='true'] {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary-deep);
+}
+.lab__panel .lab__row {
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.lab__panel label {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.lab__sel {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 5px 8px;
+  margin-left: 4px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  max-width: 100%;
+}
+.lab__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.lab__stat {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: var(--c-bg);
+}
+.lab__stat span {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--c-text-soft);
+}
+.lab__stat b {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.lab__chart {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+/* 좁은 화면에서 그래프를 끝까지 줄이면 눈금 글씨가 읽히지 않는다 —
+   520px 아래로는 줄이지 않고 상자 안에서 옆으로 밀어 보게 한다 */
+.lab__chart svg {
+  display: block;
+  width: 100%;
+  min-width: 520px;
+  height: auto;
+}
+.lab__note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+.lab__py {
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--c-code-bg);
+  color: var(--c-code-text);
+  overflow-x: auto;
+}
+.lab__py-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #8fa6c9;
+}
+.lab__py code {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  white-space: pre;
+  background: none;
+  color: inherit;
+}
+
+/* ---------- 그래프 고르기 (ChartLab) ---------- */
+.lab__score {
+  margin-left: auto;
+  font-weight: 800;
+  color: var(--c-primary);
+}
+.lab__missions {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.lab__missions button {
+  width: 2.4em;
+  height: 2.4em;
+  font: inherit;
+  font-weight: 800;
+  border-radius: 50%;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.lab__missions button[aria-pressed='true'] {
+  border-color: var(--c-primary);
+  background: var(--c-primary);
+  color: #fff;
+}
+.lab__purpose {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border-left: 4px solid var(--c-primary);
+  background: var(--c-primary-soft);
+  border-radius: var(--radius-sm);
+  font-size: 1.02rem;
+}
+.lab__purpose b {
+  margin-right: 6px;
+  color: var(--c-primary-deep);
+}
+.lab__pick {
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.lab__pick-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.lab__kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.lab__kinds button {
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.lab__kinds button[aria-pressed='true'] {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+.lab__switch {
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lab__empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  color: var(--c-text-faint);
+}
+
+/* ---------- 비식별화 (DeidLab) ---------- */
+.lab__deid-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.lab__deid-col {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  min-width: 0;
+}
+.lab__seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.lab__seg button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.lab__seg button[aria-pressed='true'] {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+}
+.lab .lab__goals {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  margin-inline-start: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.lab .lab__goals li {
+  margin-inline-start: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+.lab__goals .is-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.lab__goals .is-bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.lab__goals .is-done {
+  background: var(--c-primary-soft);
+  color: var(--c-primary-deep);
+}
+.lab__table .r-alone td {
+  background: #fecaca;
+}
+.lab__table .c-k {
+  font-weight: 800;
+}
+
+/* ---------- 시뮬레이터 공통 (Ⅳ단원) ---------- */
+.sim__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.sim__box {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--c-bg);
+  min-width: 0;
+}
+/* 구성 요소 이름표 — 1차시가 가르치는 «변수·규칙·상태·출력» 을 화면에서 바로 짚는다 */
+.sim__tag {
+  display: inline-block;
+  margin: 0 0 var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  color: #fff;
+}
+.sim__tag--var { background: #1d4ed8; }
+.sim__tag--rule { background: #7c3aed; }
+.sim__tag--state { background: #0f766e; }
+.sim__tag--out { background: #b4492b; }
+.sim__slider {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: var(--space-2);
+}
+.sim__slider b {
+  font-size: 1.1rem;
+  margin: 0 2px 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+.sim__slider input[type='range'] {
+  display: block;
+  width: 100%;
+  accent-color: var(--c-primary);
+}
+.sim__rules {
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+.sim__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.86rem;
+  color: var(--c-text-soft);
+}
+.sim__run {
+  margin-bottom: var(--space-3);
+}
+.sim__seed {
+  font-size: 0.82rem;
+  color: var(--c-text-faint);
+}
+.sim__docks {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  margin-bottom: var(--space-3);
+}
+.sim__docks span {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 2px solid #cbd5e1;
+  background: #f8fafc;
+}
+.sim__docks span.on {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+.sim__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.lab__stat b.bad,
+.sim__month b.bad { color: var(--bad); }
+.lab__stat b.ok { color: var(--ok); }
+.sim__month {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+}
+.sim__month p { margin: 0 0 var(--space-2); }
+.sim__days {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+}
+.sim__days span {
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 0;
+  border-radius: 4px;
+  color: #fff;
+}
+.sim__days span.bad { background: var(--bad); }
+.sim__days span.ok { background: var(--ok); }
+.sim__canvas {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.lab .sim__log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin-top: var(--space-3);
+}
+.lab .sim__log th,
+.lab .sim__log td {
+  border-bottom: 1px solid var(--c-border);
+  padding: 4px 8px;
+  text-align: center;
+}
+.lab .sim__log th { background: var(--c-surface-2); }
+.sim__logwrap { overflow-x: auto; }
+.sim__stats--4 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  margin-bottom: var(--space-3);
+}
+.sim__legend {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: 0.86rem;
+}
+.sim__legend i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin: 0 4px 0 10px;
+  vertical-align: -1px;
+}
+.sim__legend i.s { background: #2563eb; }
+.sim__legend i.i { background: #dc2626; }
+.sim__legend i.r { background: #94a3b8; }
+.sim__formula {
+  font-size: 1.02rem;
+  margin: 0 0 var(--space-3);
+  overflow-wrap: anywhere;
+}

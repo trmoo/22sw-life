@@ -1,0 +1,119 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 몬테카를로로 원주율 어림하기 (Ⅳ-6)
+ *
+ * 한 변이 1인 정사각형에 점을 아무렇게나 뿌리면, 사분원(반지름 1) 안에 드는 비율이 넓이의 비 π/4 에 가까워진다.
+ * 점을 더 던질수록 어림값이 π 에 다가가는 것(대수의 법칙)을 수렴 그래프로 본다.
+ * 화면은 학생마다 다른 난수를 쓴다 — 반 친구들의 값이 저마다 다르지만 모두 3.14 근처라는 것이 수업 재료다.
+ *
+ * 계산은 src/lib/simlab.js 의 원주율( ). 점은 앞에서 5,000개까지만 그린다(그 뒤는 세기만 한다).
+ *
+ * MDX 사용법
+ *   <MonteCarloPi id="u4-l6-pi" />
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<section class="lab sim" data-mcpi={id}>
+  <header class="lab__head">
+    <span class="lab__badge">시뮬레이터</span>
+    <span class="lab__title">점을 던져 원주율 어림하기</span>
+  </header>
+  <div class="sim__grid">
+    <div class="sim__box">
+      <canvas class="sim__canvas" width="420" height="420" data-canvas aria-label="정사각형 안에 던진 점들. 사분원 안은 파랑, 밖은 주황"></canvas>
+    </div>
+    <div class="sim__box">
+      <p class="sim__tag sim__tag--out">출력</p>
+      <div class="sim__stats" data-stats></div>
+      <div class="lab__row sim__run">
+        <button type="button" class="lab__btn" data-add="10">+10</button>
+        <button type="button" class="lab__btn" data-add="100">+100</button>
+        <button type="button" class="lab__btn" data-add="1000">+1,000</button>
+        <button type="button" class="lab__btn" data-add="100000">+100,000</button>
+        <button type="button" class="lab__btn lab__btn--ghost" data-reset>처음부터</button>
+      </div>
+      <p class="sim__note">원주율 ≈ 4 × (사분원 안에 든 점) ÷ (던진 점). 정사각형 넓이는 1, 사분원 넓이는 π/4 이기 때문이다.</p>
+    </div>
+  </div>
+  <div class="lab__chart" data-chart><p class="lab__empty">점을 던지면 어림값이 어떻게 움직이는지 그려진다.</p></div>
+</section>
+
+<script>
+  import { 원주율 } from '@lib/simlab.js';
+  import { 여러선 } from '@lib/datatools.js';
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-mcpi]')) {
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const cv = $<HTMLCanvasElement>('[data-canvas]');
+    const g = cv.getContext('2d')!;
+    const W = cv.width;
+    let 상태: { 안: number; n: number } = { 안: 0, n: 0 };
+    let 그린점 = 0;
+    let 흐름: { n: number; 어림: number }[] = [];
+
+    function 판그리기() {
+      g.fillStyle = '#fff';
+      g.fillRect(0, 0, W, W);
+      g.strokeStyle = '#334155';
+      g.lineWidth = 2;
+      g.strokeRect(1, 1, W - 2, W - 2);
+      g.beginPath();
+      g.arc(0, W, W, -Math.PI / 2, 0); // 왼쪽 아래를 중심으로 한 사분원
+      g.stroke();
+    }
+
+    function 표시() {
+      const 어림 = 상태.n ? (4 * 상태.안) / 상태.n : NaN;
+      const 오차 = Math.abs(어림 - Math.PI);
+      $('[data-stats]').innerHTML =
+        `<div class="lab__stat"><span>던진 점</span><b>${상태.n.toLocaleString('ko-KR')}</b></div>` +
+        `<div class="lab__stat"><span>사분원 안</span><b>${상태.안.toLocaleString('ko-KR')}</b></div>` +
+        `<div class="lab__stat"><span>어림한 원주율</span><b>${상태.n ? 어림.toFixed(4) : '—'}</b></div>` +
+        `<div class="lab__stat"><span>진짜 π 와의 차이</span><b>${상태.n ? 오차.toFixed(4) : '—'}</b></div>`;
+      if (흐름.length > 1) {
+        $('[data-chart]').innerHTML = 여러선(
+          [
+            { 이름: '어림값', 값들: 흐름.map((x) => x.어림), 색: '#1d4ed8' },
+            { 이름: 'π = 3.14159…', 값들: 흐름.map(() => Math.PI), 색: '#b4492b', 점선: true },
+          ],
+          { x값들: 흐름.map((x) => x.n.toLocaleString('ko-KR')), x이름: '던진 점의 수', y이름: '어림한 원주율', y최대: 4, 눈금수: 5 }
+        );
+      }
+    }
+
+    function 던지기(n: number) {
+      /* 화면은 학생마다 다른 난수 — Math.random */
+      const r = 원주율(n, Math.random, Math.max(0, 5000 - 그린점), 상태);
+      for (const [x, y, 안] of r.점들) {
+        g.fillStyle = 안 ? '#1d4ed8' : '#ea580c';
+        g.fillRect(x * W - 1.5, (1 - y) * W - 1.5, 3, 3);
+      }
+      그린점 += r.점들.length;
+      /* 흐름 — 던질 때마다 한 점씩 남긴다(가로축이 던진 수) */
+      흐름.push({ n: r.n, 어림: r.어림 });
+      상태 = { 안: r.안, n: r.n };
+      표시();
+    }
+
+    root.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const b = t.closest<HTMLElement>('[data-add]');
+      if (b) return 던지기(Number(b.dataset.add));
+      if (t.closest('[data-reset]')) {
+        상태 = { 안: 0, n: 0 };
+        그린점 = 0;
+        흐름 = [];
+        판그리기();
+        표시();
+        $('[data-chart]').innerHTML = '<p class="lab__empty">점을 던지면 어림값이 어떻게 움직이는지 그려진다.</p>';
+      }
+    });
+    판그리기();
+    표시();
+  }
+</script>

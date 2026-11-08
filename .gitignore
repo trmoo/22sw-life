@@ -1,0 +1,41 @@
+# 의존성·빌드 산출물
+node_modules/
+dist/
+.astro/
+.vite/
+
+# 검정 교과서 6종·지도서·실습 자료 — 남의 저작물이라 저장소·배포물에 넣지 않는다.
+# 다루는 범위를 맞추는 데에만 참고하고, 문장·예제·그림은 옮기지 않는다.
+교학사/
+길벗/
+삼양미디어/
+씨마스/
+이오북스/
+천재교과서/
+*.pdf
+*.PDF
+*.hwp
+*.hwpx
+*.pptx
+*.zip
+*.xlsx
+
+# OS·에디터
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# 로그·임시
+*.log
+npm-debug.log*
+.env
+.env.*
+
+# 개발 기록은 로컬에만 둔다 — 깃허브에 올리지 않는다
+CLAUDE.md
+
+# 에디터 실행 설정(로컬 전용)
+.claude/

@@ -1,0 +1,168 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 분석 실험실 — 요약하기 · 비교하기 · 관계 보기 ([12소생03-03])
+ *
+ * 데이터 분석의 세 가지 물음을 단추로 해 본다.
+ *   요약: 이 값은 보통 얼마인가 (평균·중앙값·흩어짐)
+ *   비교: 묶음끼리 무엇이 다른가 (요일·계절·월별 평균)
+ *   관계: 두 값이 함께 움직이는가 (산점도·상관 계수)
+ * 화면마다 같은 일을 하는 판다스 코드 한 줄을 함께 보여 준다.
+ *
+ * 계산은 src/lib/datatools.js — 판다스 값과 같은지 tools/check-datatools.mjs 가 대조한다.
+ *
+ * MDX 사용법
+ *   <StatLab id="u3-l5-stat" />          (기본 파일 bike.csv)
+ *   <StatLab id="…" start="관계" />       처음 열 화면
+ */
+import { readFileSync } from 'node:fs';
+
+interface Props {
+  id: string;
+  file?: string;
+  start?: '요약' | '비교' | '관계';
+}
+const { id, file = 'bike.csv', start = '요약' } = Astro.props;
+const csv = readFileSync(`public/data/${file}`, 'utf8');
+---
+
+<section class="lab" data-statlab={id} data-file={file} data-start={start}>
+  <script type="application/json" data-csv set:html={JSON.stringify(csv)} />
+  <header class="lab__head">
+    <span class="lab__badge">분석 실험실</span>
+    <span class="lab__title" data-title>{file}</span>
+  </header>
+
+  <div class="lab__tabs" role="tablist">
+    <button type="button" role="tab" data-tab="요약">① 요약하기 <small>보통 얼마인가</small></button>
+    <button type="button" role="tab" data-tab="비교">② 비교하기 <small>무엇이 다른가</small></button>
+    <button type="button" role="tab" data-tab="관계">③ 관계 보기 <small>함께 움직이나</small></button>
+  </div>
+
+  <div class="lab__panel" data-panel="요약">
+    <div class="lab__row">
+      <label>살펴볼 열 <select class="lab__sel" data-s-col></select></label>
+    </div>
+    <div class="lab__stats" data-s-stats></div>
+    <div class="lab__chart" data-s-chart></div>
+    <p class="lab__note" data-s-note></p>
+  </div>
+
+  <div class="lab__panel" data-panel="비교" hidden>
+    <div class="lab__row">
+      <label>무엇으로 묶을까 <select class="lab__sel" data-c-group></select></label>
+      <label>어떤 값을 <select class="lab__sel" data-c-col></select></label>
+      <label>어떻게 <select class="lab__sel" data-c-how><option>평균</option><option>합계</option></select></label>
+    </div>
+    <div class="lab__chart" data-c-chart></div>
+    <p class="lab__note" data-c-note></p>
+  </div>
+
+  <div class="lab__panel" data-panel="관계" hidden>
+    <div class="lab__row">
+      <label>가로(x) <select class="lab__sel" data-r-x></select></label>
+      <label>세로(y) <select class="lab__sel" data-r-y></select></label>
+    </div>
+    <div class="lab__chart" data-r-chart></div>
+    <p class="lab__note" data-r-note></p>
+  </div>
+
+  <div class="lab__py">
+    <span class="lab__py-label">파이썬(판다스)으로는</span>
+    <code data-py></code>
+  </div>
+</section>
+
+<script>
+  import { CSV읽기, 숫자로, 요약, 묶음평균, 상관, 상관말, 차례, 수, 히스토그램, 막대, 산점도, 열갈래 } from '@lib/datatools.js';
+
+  /* 열 이름 → 단위. 화면 글에 붙인다 */
+  const 단위: Record<string, string> = { 평균기온: '℃', 강수량: 'mm', 미세먼지: '㎍/㎥', 대여건수: '건' };
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-statlab]')) {
+    const 표 = CSV읽기(JSON.parse(root.querySelector('[data-csv]')!.textContent!));
+    const 파일 = root.dataset.file!;
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const 수치열 = 표.열.filter((k) => 열갈래(표.행, k) === '수치' && k !== '월');
+    const 묶음열 = 표.열.filter((k) => k in 차례);
+    const 값 = (k: string) => 표.행.map((r) => 숫자로(r[k]) as number);
+    $('[data-title]').textContent = `${파일} — ${표.행.length}일치 기록`;
+
+    const 채우기 = (sel: string, 목록: string[], 고를 = 0) => {
+      $<HTMLSelectElement>(sel).innerHTML = 목록.map((k, i) => `<option${i === 고를 ? ' selected' : ''}>${k}</option>`).join('');
+    };
+    채우기('[data-s-col]', 수치열, Math.max(0, 수치열.indexOf('대여건수')));
+    채우기('[data-c-group]', 묶음열, Math.max(0, 묶음열.indexOf('요일')));
+    채우기('[data-c-col]', 수치열, Math.max(0, 수치열.indexOf('대여건수')));
+    채우기('[data-r-x]', 수치열, 0);
+    채우기('[data-r-y]', 수치열, Math.max(0, 수치열.indexOf('대여건수')));
+    const 고른 = (s: string) => $<HTMLSelectElement>(s).value;
+    let 탭 = root.dataset.start ?? '요약';
+
+    function 요약그리기() {
+      const k = 고른('[data-s-col]');
+      const s = 요약(값(k));
+      const u = 단위[k] ?? '';
+      const 칸 = [
+        ['개수', `${s.개수}일`], ['평균', `${수(s.평균, 1)}${u}`], ['중앙값', `${수(s.중앙값, 1)}${u}`],
+        ['가장 작은 값', `${수(s.최솟값, 1)}${u}`], ['가장 큰 값', `${수(s.최댓값, 1)}${u}`], ['표준편차', 수(s.표준편차, 1)],
+      ];
+      $('[data-s-stats]').innerHTML = 칸.map(([a, b]) => `<div class="lab__stat"><span>${a}</span><b>${b}</b></div>`).join('');
+      $('[data-s-chart]').innerHTML = 히스토그램(값(k), { x이름: `${k}(${u})`, 구간수: 12 });
+      const 차이 = Math.abs(s.평균 - s.중앙값) / (s.표준편차 || 1);
+      $('[data-s-note]').textContent =
+        차이 > 0.25
+          ? `평균(${수(s.평균, 1)})과 중앙값(${수(s.중앙값, 1)})이 꽤 다르다. 값이 한쪽으로 치우쳐 있기 때문이다 — 그림에서 어느 쪽으로 꼬리가 길게 늘어졌는지 보자. 이럴 때 «보통의 날»은 중앙값이 더 잘 말해 준다.`
+          : `평균과 중앙값이 비슷하다. 값이 가운데를 중심으로 고르게 퍼져 있다. 표준편차가 ${수(s.표준편차, 1)}${u} 라는 것은 «날마다의 값이 평균에서 보통 그만큼 떨어져 있다»는 뜻이다.`;
+      $('[data-py]').textContent = `df['${k}'].describe()      # 또는 .mean() · .median() · .std()`;
+    }
+
+    function 비교그리기() {
+      const g = 고른('[data-c-group]');
+      const k = 고른('[data-c-col]');
+      const how = 고른('[data-c-how]');
+      const 묶음 = 묶음평균(표.행, g, k, (차례 as Record<string, string[]>)[g]);
+      const 점 = 묶음.map((m) => ({ 이름: g === '월' ? `${m.이름}월` : m.이름, 값: how === '합계' ? m.합 : m.평균 }));
+      const 큰 = 점.reduce((a, b) => (b.값 > a.값 ? b : a));
+      const 작은 = 점.reduce((a, b) => (b.값 < a.값 ? b : a));
+      $('[data-c-chart]').innerHTML = 막대(점, { x이름: g, y이름: `${k} ${how}`, 강조: [큰.이름] });
+      const 주말 = g === '요일' ? 묶음.filter((m) => m.이름 === '토' || m.이름 === '일') : [];
+      $('[data-c-note]').textContent =
+        `${how === '합계' ? '합계가' : '평균이'} 가장 큰 것은 「${큰.이름}」(${수(큰.값, 0)}), 가장 작은 것은 「${작은.이름}」(${수(작은.값, 0)})이다.` +
+        (how === '합계' && g === '월' ? ' 달마다 날 수가 달라(28~31일) 합계는 날 수의 영향도 받는다. 평균으로도 견주어 보자.' : '') +
+        (주말.length === 2 && k === '대여건수' ? ' 토·일이 함께 높은가? 주말에는 나들이로 빌리는 사람이 는다.' : '');
+      $('[data-py]').textContent =
+        `df.groupby('${g}')['${k}'].${how === '합계' ? 'sum' : 'mean'}()` +
+        (g === '요일' ? `.reindex(['월','화','수','목','금','토','일'])   # 가나다 차례를 요일 차례로` : g === '계절' ? `.reindex(['봄','여름','가을','겨울'])` : '');
+    }
+
+    function 관계그리기() {
+      const x = 고른('[data-r-x]');
+      const y = 고른('[data-r-y]');
+      const r = 상관(값(x), 값(y));
+      $('[data-r-chart]').innerHTML = 산점도(값(x), 값(y), { x이름: `${x}(${단위[x] ?? ''})`, y이름: `${y}(${단위[y] ?? ''})` });
+      $('[data-r-note]').innerHTML =
+        x === y
+          ? '같은 열끼리는 언제나 상관 계수가 1 이다 — 다른 두 열을 골라 보자.'
+          : `상관 계수 <b>r = ${r.toFixed(2)}</b> — ${상관말(r)}. ` +
+            '−1 에 가까우면 «한쪽이 늘 때 다른 쪽이 준다», +1 에 가까우면 «함께 는다», 0 에 가까우면 «직선 관계가 없다». ' +
+            '<br>⚠ 함께 움직인다고 해서 <b>한쪽이 다른 쪽의 원인</b>이라는 뜻은 아니다. 둘을 함께 움직이게 하는 다른 것(계절 같은)이 숨어 있을 수 있다.';
+      $('[data-py]').textContent = `df['${x}'].corr(df['${y}'])      # 그림은 plt.scatter(df['${x}'], df['${y}'])`;
+    }
+
+    function 보이기() {
+      for (const b of root.querySelectorAll<HTMLElement>('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === 탭));
+      for (const p of root.querySelectorAll<HTMLElement>('[data-panel]')) p.hidden = p.dataset.panel !== 탭;
+      if (탭 === '요약') 요약그리기();
+      if (탭 === '비교') 비교그리기();
+      if (탭 === '관계') 관계그리기();
+    }
+
+    root.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+      if (b) { 탭 = b.dataset.tab!; 보이기(); }
+    });
+    root.addEventListener('change', 보이기);
+    보이기();
+  }
+</script>

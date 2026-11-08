@@ -1,0 +1,160 @@
+---
+// © 2026 티쳐무 · 모든 권리 보유 — 고등학교 「소프트웨어와 생활」 웹 교과서
+/**
+ * 린 캔버스 작성기 (Ⅴ-4) — 아이디어를 한 장짜리 계획표 아홉 칸에
+ *
+ * 린 캔버스는 애시 모리아(Ash Maurya)가 비즈니스 모델 캔버스를 고쳐 만든 한 장 계획표다.
+ * 칸 이름·물음은 이 교과서가 고등학생에 맞게 한국어로 새로 썼다(수익 칸은 «이어 가는 방법»까지 받는다 —
+ * 학교 프로젝트는 돈을 벌지 않는 사회적 서비스가 많기 때문이다).
+ *
+ * 칸마다 번호는 «흔히 권하는 작성 차례의 한 예»다. 아직 빈 칸 가운데 차례가 가장 빠른 칸이 테두리로 빛난다.
+ * `from` 을 주면 3차시 페르소나 저장(swlife-persona:<from>)에서 고객·문제·현재 대안을 가져올 수 있다.
+ * 좁은 화면(640px 미만)에서는 한 줄로 늘어서고, 작성 차례대로 놓인다.
+ *
+ * MDX 사용법
+ *   <LeanCanvas id="u5-l4-canvas" from="u5-l3-persona" />
+ */
+import { 캔버스칸 } from '@lib/projtools.js';
+interface Props {
+  id: string;
+  from?: string;
+}
+const { id, from = '' } = Astro.props;
+const 자리들 = ['pb', 'so', 'me', 'uv', 'un', 'ch', 'cu', 'co', 're'];
+const 칸묶음 = 자리들.map((a) => 캔버스칸.filter((k) => k.자리 === a));
+---
+
+<section class="lab pj" data-canvas={id} data-from={from}>
+  <header class="lab__head">
+    <span class="lab__badge">린 캔버스</span>
+    <span class="lab__title">아이디어를 한 장에</span>
+  </header>
+  <p class="pj__how">
+    칸의 번호는 채우기를 흔히 권하는 차례의 한 예다. <strong>빛나는 칸</strong>부터 채워 보자. 한 칸에 길게 쓰지 않는다 — 짧게 적고 자주 고친다.
+  </p>
+
+  <div class="pj-canvas" data-grid>
+    {
+      칸묶음.map((묶음) => {
+        const 주 = 묶음.find((k) => !k.딸림)!;
+        return (
+          <div class="pj-box" data-area={주.자리} data-key={주.key} style={`--o:${주.차례}`}>
+            {묶음.map((k) => (
+              <div class={k.딸림 ? 'pj-box__sub' : ''}>
+                <div class="pj-box__t">
+                  {!k.딸림 && <span class="pj-box__n">{k.차례}</span>}
+                  {k.이름}
+                </div>
+                <div class="pj-box__q">{k.물음}</div>
+                <textarea rows={k.딸림 ? 2 : 4} data-k={k.key} aria-label={k.이름} />
+              </div>
+            ))}
+          </div>
+        );
+      })
+    }
+  </div>
+
+  <div class="pj__checks" data-checks></div>
+
+  <div class="pj__actions">
+    <button type="button" class="lab__btn" data-act="download">⬇ 내려받기</button>
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="print">🖨 인쇄</button>
+    {from && <button type="button" class="lab__btn lab__btn--ghost" data-act="persona">👤 페르소나에서 가져오기</button>}
+    <button type="button" class="lab__btn lab__btn--ghost" data-act="example">예시 캔버스 보기</button>
+    <button type="button" class="lab__btn lab__btn--ghost pj__quiet" data-act="clear">지우기</button>
+  </div>
+  <p class="pj__note" data-saved>적은 내용은 이 브라우저에만 저장된다. 제출하려면 내려받는다.</p>
+
+  <div data-example hidden>
+    <p class="pj__how" style="margin-top:var(--space-4)"><strong>예시</strong> — 지어낸 서비스 「찾아줘 우리 학교」(우리 학교 분실물 찾기). 내 캔버스와 칸끼리 견주어 보자.</p>
+    <div class="pj-canvas" data-example-grid></div>
+  </div>
+</section>
+
+<script>
+  import { 캔버스칸, 캔버스예시, 캔버스점검, 페르소나에서캔버스, 이스케이프, 읽기, 쓰기, 기록HTML, 점검목록HTML } from '@lib/projtools.js';
+  import { 두번확인, 내려받기, 점검그리기 } from '@lib/pjui';
+
+  const 자리들 = ['pb', 'so', 'me', 'uv', 'un', 'ch', 'cu', 'co', 're'];
+
+  /** 읽기 전용 캔버스(예시·내려받기용) */
+  function 보기격자(c: Record<string, string>) {
+    return 자리들
+      .map((a) => {
+        const 묶음 = 캔버스칸.filter((k) => k.자리 === a);
+        const 주 = 묶음.find((k) => !k.딸림)!;
+        return `<div class="pj-box" data-area="${a}" style="--o:${주.차례}">${묶음
+          .map(
+            (k) => `<div class="${k.딸림 ? 'pj-box__sub' : ''}"><div class="pj-box__t">${k.딸림 ? '' : `<span class="pj-box__n">${주.차례}</span>`}${이스케이프(k.이름)}</div>
+            <div class="pj-box__view">${c[k.key]?.trim() ? 이스케이프(c[k.key]) : '<span style="color:#94a3b8">(비어 있음)</span>'}</div></div>`,
+          )
+          .join('')}</div>`;
+      })
+      .join('');
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-canvas]')) {
+    const 열쇠 = 'swlife-canvas:' + root.dataset.canvas;
+    const 입력들 = [...root.querySelectorAll<HTMLTextAreaElement>('[data-grid] [data-k]')];
+    const 모으기 = () => Object.fromEntries(입력들.map((el) => [el.dataset.k!, el.value])) as Record<string, string>;
+    const 놓기 = (c: Record<string, string>) => { for (const el of 입력들) el.value = c[el.dataset.k!] ?? ''; };
+
+    function 그리기(저장 = true) {
+      const c = 모으기();
+      const 차례 = 캔버스칸.filter((k) => !k.딸림).sort((a, b) => a.차례! - b.차례!);
+      const 다음 = 차례.find((k) => !c[k.key]?.trim());
+      for (const box of root.querySelectorAll<HTMLElement>('[data-grid] .pj-box')) {
+        box.classList.toggle('is-next', box.dataset.key === 다음?.key);
+        box.classList.toggle('is-done', !!c[box.dataset.key!]?.trim());
+      }
+      점검그리기(root.querySelector<HTMLElement>('[data-checks]')!, 캔버스점검(c));
+      if (저장) {
+        root.querySelector<HTMLElement>('[data-saved]')!.textContent = 쓰기(열쇠, c)
+          ? '저장됨 ✓ — 이 브라우저에만 남는다. 제출하려면 내려받는다.'
+          : '이 브라우저는 저장을 막아 두었다 — 내려받기로 남기자.';
+      }
+    }
+
+    놓기(읽기(열쇠) ?? {});
+    그리기(false);
+    root.querySelector('[data-grid]')!.addEventListener('input', () => 그리기());
+
+    const 사람단추 = root.querySelector<HTMLButtonElement>('[data-act="persona"]');
+    if (사람단추) {
+      사람단추.addEventListener('click', () => {
+        const p = 읽기('swlife-persona:' + root.dataset.from);
+        const 쪽지 = root.querySelector<HTMLElement>('[data-saved]')!;
+        if (!p || !Object.values(p).some((v) => String(v).trim())) {
+          쪽지.textContent = '이 브라우저에 3차시 페르소나가 없다 — 3차시에서 먼저 만들거나, 직접 적는다.';
+          return;
+        }
+        놓기(페르소나에서캔버스(p, 모으기()));
+        그리기();
+        쪽지.textContent = '페르소나에서 고객군·문제·현재 대안을 가져왔다(이미 적은 칸은 그대로 두었다). 캔버스에 맞게 다듬자.';
+      });
+    }
+
+    const 예시칸 = root.querySelector<HTMLElement>('[data-example]')!;
+    root.querySelector('[data-example-grid]')!.innerHTML = 보기격자(캔버스예시);
+    const 예시단추 = root.querySelector<HTMLButtonElement>('[data-act="example"]')!;
+    예시단추.addEventListener('click', () => {
+      예시칸.hidden = !예시칸.hidden;
+      예시단추.textContent = 예시칸.hidden ? '예시 캔버스 보기' : '예시 캔버스 접기';
+    });
+
+    root.querySelector('[data-act="print"]')!.addEventListener('click', () => window.print());
+    두번확인(root.querySelector<HTMLButtonElement>('[data-act="clear"]')!, () => { 놓기({}); 그리기(); });
+    root.querySelector('[data-act="download"]')!.addEventListener('click', () => {
+      const c = 모으기();
+      내려받기(
+        '린 캔버스',
+        기록HTML('린 캔버스', `<div class="pj-canvas">${보기격자(c)}</div>${점검목록HTML(캔버스점검(c))}`,
+          `.pj-canvas{display:grid;grid-template-columns:repeat(10,1fr);grid-template-areas:'pb pb so so uv uv un un cu cu' 'pb pb me me uv uv ch ch cu cu' 'co co co co co re re re re re';gap:2px;background:#1c2536;border:2px solid #1c2536}
+.pj-box{background:#fff;padding:8px}${자리들.map((a) => `.pj-box[data-area=${a}]{grid-area:${a}}`).join('')}
+.pj-box__t{font-weight:800;font-size:.85rem}.pj-box__n{display:inline-block;width:1.4em;text-align:center;border-radius:50%;background:#e2e8f0;margin-right:4px;font-size:.75rem}
+.pj-box__view{white-space:pre-wrap;font-size:.85rem}.pj-box__sub{border-top:1px dashed #cbd5e1;margin-top:6px;padding-top:4px}`),
+      );
+    });
+  }
+</script>
